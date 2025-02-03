@@ -1,3 +1,5 @@
+import numpy as np
+
 N = 50
 mass = 1.89 # kg
 I = 0.00189 # kg*m^2
@@ -77,6 +79,9 @@ def generateMotorCommands(init_pos, des_pos, time_vector):
     T_max = time_vector[ len(time_vector)-1 ]
     # Time and value of the minimum jerk curve
     ext_t, ext_val = minJerk_ddt_minmax(init_pos, des_pos, time_vector)
+
+    # Define njt based on the context of your data
+    njt = ext_val.shape[1]  # Assuming ext_val is a 2D array and njt is the number of columns
 
     # Approximate with sin function
     tmp_ext = np.reshape( ext_val[0,:], (1,njt) ) # First extreme (positive)
