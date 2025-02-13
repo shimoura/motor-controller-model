@@ -88,7 +88,7 @@ except Exception:
 # We seed the numpy random generator, which will generate random initial weights as well as random input and
 # output.
 
-rng_seed = 1  # numpy random seed
+rng_seed = 1234  # numpy random seed
 np.random.seed(rng_seed)  # fix numpy random seed
 
 # %% ###########################################################################################################
@@ -100,10 +100,6 @@ np.random.seed(rng_seed)  # fix numpy random seed
 
 n_batch = 1  # batch size
 n_iter = 10  # number of iterations
-
-n_input_symbols = 2  # number of input populations, e.g. 2 = x, y positions
-n_positions = 10  # number of positions given before decision
-prob_group = 0.5  # probability with which one input group is present
 
 steps = {
     "pause": 150,  # time steps of pause and preparation
@@ -159,15 +155,11 @@ nest.set(**params_setup)
 # ~~~~~~~~~~~~~~
 # We proceed by creating a certain number of input, recurrent, and readout neurons and setting their parameters.
 # Additionally, we already create an input spike generator and an output target rate generator, which we will
-# configure later. Within the recurrent network, alongside a population of regular neurons, we introduce a
-# population of adaptive neurons, to enhance the network's memory retention.
+# configure later.
 
-n_in = 40  # number of input neurons
-n_ad = 50  # number of adaptive neurons
-n_reg = 50  # number of regular neurons
-n_rec = n_ad + n_reg  # number of recurrent neurons
+n_in = 100  # number of input neurons (one for x and one for y)
+n_rec = 100  # number of recurrent neurons
 n_out = 2  # number of readout neurons
-
 
 params_nrn_reg = {
     "C_m": 1.0,  # pF, membrane capacitance - takes effect only if neurons get current input (here not the case)
@@ -184,28 +176,6 @@ params_nrn_reg = {
     "V_th": 0.6,  # mV, spike threshold membrane voltage
 }
 
-params_nrn_ad = {
-    "adapt_tau": 2000.0,  # ms, time constant of adaptive threshold
-    "adaptation": 0.0,  # initial value of the spike threshold adaptation
-    "C_m": 1.0,
-    "c_reg": 2.0,
-    "E_L": 0.0,
-    "f_target": 10.0,
-    "gamma": 0.3,
-    "I_e": 0.0,
-    "regular_spike_arrival": True,
-    "surrogate_gradient_function": "piecewise_linear",
-    "t_ref": 5.0,
-    "tau_m": 20.0,
-    "V_m": 0.0,
-    "V_th": 0.6,
-}
-
-params_nrn_ad["adapt_beta"] = 1.7 * (
-    (1.0 - np.exp(-duration["step"] / params_nrn_ad["adapt_tau"]))
-    / (1.0 - np.exp(-duration["step"] / params_nrn_ad["tau_m"]))
-)  # prefactor of adaptive threshold
-
 params_nrn_out = {
     "C_m": 1.0,
     "E_L": 0.0,
@@ -216,8 +186,6 @@ params_nrn_out = {
     "V_m": 0.0,
 }
 
-####################
-
 # Intermediate parrot neurons required between input spike generators and recurrent neurons,
 # since devices cannot establish plastic synapses for technical reasons
 
@@ -227,12 +195,11 @@ nrns_in = nest.Create("parrot_neuron", n_in)
 # The suffix _bsshslm_2020 follows the NEST convention to indicate in the model name the paper
 # that introduced it by the first letter of the authors' last names and the publication year.
 
-nrns_reg = nest.Create("eprop_iaf_bsshslm_2020", n_reg, params_nrn_reg)
-nrns_ad = nest.Create("eprop_iaf_adapt_bsshslm_2020", n_ad, params_nrn_ad)
+nrns_reg = nest.Create("eprop_iaf_bsshslm_2020", n_rec, params_nrn_reg)
 nrns_out = nest.Create("eprop_readout_bsshslm_2020", n_out, params_nrn_out)
 gen_rate_target = nest.Create("step_rate_generator", n_out)
 
-nrns_rec = nrns_reg + nrns_ad
+nrns_rec = nrns_reg
 
 # %% ###########################################################################################################
 # Create recorders
@@ -244,7 +211,7 @@ nrns_rec = nrns_reg + nrns_ad
 # default, recordings are stored in memory but can also be written to file.
 
 n_record = 1  # number of neurons per type to record dynamic variables from - this script requires n_record >= 1
-n_record_w = 3  # number of senders and targets to record weights from - this script requires n_record_w >=1
+n_record_w = 2  # number of senders and targets to record weights from - this script requires n_record_w >=1
 
 if n_record == 0 or n_record_w == 0:
     raise ValueError("n_record and n_record_w >= 1 required")
@@ -254,13 +221,6 @@ params_mm_reg = {
     "record_from": ["V_m", "surrogate_gradient", "learning_signal"],  # dynamic variables to record
     "start": duration["offset_gen"] + duration["delay_in_rec"],  # start time of recording
     "stop": duration["offset_gen"] + duration["delay_in_rec"] + duration["task"],  # stop time of recording
-}
-
-params_mm_ad = {
-    "interval": duration["step"],
-    "record_from": params_mm_reg["record_from"] + ["V_th_adapt", "adaptation"],
-    "start": duration["offset_gen"] + duration["delay_in_rec"],
-    "stop": duration["offset_gen"] + duration["delay_in_rec"] + duration["task"],
 }
 
 params_mm_out = {
@@ -282,16 +242,12 @@ params_sr = {
     "stop": duration["total_offset"] + duration["task"],
 }
 
-####################
-
 mm_reg = nest.Create("multimeter", params_mm_reg)
-mm_ad = nest.Create("multimeter", params_mm_ad)
 mm_out = nest.Create("multimeter", params_mm_out)
 sr = nest.Create("spike_recorder", params_sr)
 wr = nest.Create("weight_recorder", params_wr)
 
 nrns_reg_record = nrns_reg[:n_record]
-nrns_ad_record = nrns_ad[:n_record]
 
 # %% ###########################################################################################################
 # Create connections
@@ -395,7 +351,6 @@ nest.Connect(nrns_out, nrns_out, params_conn_all_to_all, params_syn_out_out)  # 
 nest.Connect(nrns_in + nrns_rec, sr, params_conn_all_to_all, params_syn_static)
 
 nest.Connect(mm_reg, nrns_reg_record, params_conn_all_to_all, params_syn_static)
-nest.Connect(mm_ad, nrns_ad_record, params_conn_all_to_all, params_syn_static)
 nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 
 # After creating the connections, we can individually initialize the optimizer's
@@ -413,48 +368,44 @@ nest.GetConnections(nrns_rec[0], nrns_rec[1:3]).set([params_init_optimizer] * 2)
 # Define the size of the 2D plane
 plane_size = 10
 
+# Assign each neuron to an x and y position
+neuron_positions = np.array([(x, y) for x in range(plane_size) for y in range(plane_size)])
+np.random.shuffle(neuron_positions)
+neuron_positions = neuron_positions[:n_in]
+
+# Import the Gaussian encoder function
+def gaussian_encoder(norm_state, n_in, seq_len, background_noise_prob=0.05, max_amplitude=1.0, std=0.1, cyclic=False):
+    observation_space_dim = len(norm_state)
+    n_in_per_obs_dim = n_in // observation_space_dim
+    rands_1 = np.random.uniform(0, 1, (n_in, seq_len))
+    encoded_state = 1.0 * (rands_1 < background_noise_prob)
+    for i, s in enumerate(norm_state):
+        mean = int(n_in_per_obs_dim * s)
+        for n in range(n_in_per_obs_dim):
+            rands_2 = np.random.uniform(0, 1, seq_len)
+            dist = np.abs(n - mean)
+            if cyclic and dist > n_in_per_obs_dim / 2:
+                dist = n_in_per_obs_dim - dist
+            amplitude = max_amplitude * np.exp(-0.5 * (dist / std) ** 2)
+            encoded_state[n_in_per_obs_dim * i + n] += 1.0 * (rands_2 < amplitude)
+
+    return encoded_state.clip(max=1.0)
+
 def generate_reaching_task_input_output(
-    n_batch, n_in, prob_group, input_spike_prob, n_positions, n_input_symbols, steps, plane_size
+    n_batch, n_in, neuron_positions, input_spike_prob, steps
 ):
-    n_pop_nrn = n_in // n_input_symbols
-
-    prob_choices = np.array([prob_group, 1 - prob_group], dtype=np.float32)
-    idx = np.random.choice([0, 1], n_batch)
-    probs = np.zeros((n_batch, 2), dtype=np.float32)
-    probs[:, 0] = prob_choices[idx]
-    probs[:, 1] = prob_choices[1 - idx]
-
-    batched_positions = np.zeros((n_batch, n_positions, 2), dtype=int)
-    for b_idx in range(n_batch):
-        batched_positions[b_idx, :, 0] = np.random.choice(plane_size, n_positions)
-        batched_positions[b_idx, :, 1] = np.random.choice(plane_size, n_positions)
-
     input_spike_probs = np.zeros((n_batch, steps["sequence"], n_in))
 
     for b_idx in range(n_batch):
-        for p_idx in range(n_positions):
-            x_pos = batched_positions[b_idx, p_idx, 0]
-            y_pos = batched_positions[b_idx, p_idx, 1]
+        # Generate random input positions within the grid
+        input_positions = np.random.rand(2) * plane_size
+        norm_state = input_positions / plane_size  # Normalize the input positions
+        encoded_state = gaussian_encoder(norm_state, n_in, steps["sequence"], background_noise_prob=input_spike_prob)
 
-            step_start = steps["pause"] + p_idx * (steps["movement"] // n_positions)
-            step_stop = step_start + (steps["movement"] // n_positions)
+        for nrn_idx in range(n_in):
+            input_spike_probs[b_idx, :, nrn_idx] = encoded_state[nrn_idx]
 
-            # Assign spike probabilities to the appropriate subgroups of neurons for x and y positions
-            pop_nrn_start_x = x_pos * n_pop_nrn
-            pop_nrn_stop_x = pop_nrn_start_x + n_pop_nrn
-
-            pop_nrn_start_y = y_pos * n_pop_nrn
-            pop_nrn_stop_y = pop_nrn_start_y + n_pop_nrn
-
-            input_spike_probs[b_idx, step_start:step_stop, pop_nrn_start_x:pop_nrn_stop_x] = input_spike_prob
-            input_spike_probs[b_idx, step_start:step_stop, pop_nrn_start_y:pop_nrn_stop_y] = input_spike_prob
-
-            # Check if the spike probabilities are correctly assigned
-            assert np.all(input_spike_probs[b_idx, step_start:step_stop, pop_nrn_start_x:pop_nrn_stop_x] == input_spike_prob)
-            assert np.all(input_spike_probs[b_idx, step_start:step_stop, pop_nrn_start_y:pop_nrn_stop_y] == input_spike_prob)
-
-    input_spike_probs[:, :, 2 * n_pop_nrn :] = input_spike_prob / 4.0
-    input_spike_bools = input_spike_probs > np.random.rand(input_spike_probs.size).reshape(input_spike_probs.shape)
+    input_spike_bools = input_spike_probs > np.random.rand(*input_spike_probs.shape)
     input_spike_bools[:, 0, :] = 0  # remove spikes in 0th time step of every sequence for technical reasons
 
     # Generate target positions within the grid
@@ -462,8 +413,6 @@ def generate_reaching_task_input_output(
     for b_idx in range(n_batch):
         target_positions[b_idx, 0] = np.random.choice(plane_size)
         target_positions[b_idx, 1] = np.random.choice(plane_size)
-
-        print(f"Batch {b_idx + 1}: Target position: {target_positions[b_idx]}")
 
     return input_spike_bools, target_positions
 
@@ -475,7 +424,7 @@ target_positions_list = []
 
 for iteration in range(n_iter):
     input_spike_bools, target_positions = generate_reaching_task_input_output(
-        n_batch, n_in, prob_group, input_spike_prob, n_positions, n_input_symbols, steps, plane_size
+        n_batch, n_in, neuron_positions, input_spike_prob, steps
     )
     input_spike_bools_list.append(input_spike_bools)
     target_positions_list.extend(target_positions.tolist())
@@ -566,7 +515,6 @@ weights_post_train = {
 # We can also retrieve the recorded history of the dynamic variables and weights, as well as detected spikes.
 
 events_mm_reg = mm_reg.get("events")
-events_mm_ad = mm_ad.get("events")
 events_mm_out = mm_out.get("events")
 events_sr = sr.get("events")
 events_wr = wr.get("events")
@@ -671,7 +619,7 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
 
 
 for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps["task"])]:
-    fig, axs = plt.subplots(14, 1, sharex=True, figsize=(8, 14), gridspec_kw={"hspace": 0.4, "left": 0.2})
+    fig, axs = plt.subplots(8, 1, sharex=True, figsize=(10, 16), gridspec_kw={"hspace": 0.4, "left": 0.2})
 
     plot_spikes(axs[0], events_sr, nrns_in, r"$z_i$" + "\n", xlims)
     plot_spikes(axs[1], events_sr, nrns_reg, r"$z_j$" + "\n", xlims)
@@ -680,17 +628,9 @@ for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps[
     plot_recordable(axs[3], events_mm_reg, "surrogate_gradient", r"$\psi_j$" + "\n", xlims)
     plot_recordable(axs[4], events_mm_reg, "learning_signal", r"$L_j$" + "\n(pA)", xlims)
 
-    plot_spikes(axs[5], events_sr, nrns_ad, r"$z_j$" + "\n", xlims)
-
-    plot_recordable(axs[6], events_mm_ad, "V_m", r"$v_j$" + "\n(mV)", xlims)
-    plot_recordable(axs[7], events_mm_ad, "surrogate_gradient", r"$\psi_j$" + "\n", xlims)
-    plot_recordable(axs[8], events_mm_ad, "V_th_adapt", r"$A_j$" + "\n(mV)", xlims)
-    plot_recordable(axs[9], events_mm_ad, "learning_signal", r"$L_j$" + "\n(pA)", xlims)
-
-    plot_recordable(axs[10], events_mm_out, "V_m", r"$v_k$" + "\n(mV)", xlims)
-    plot_recordable(axs[11], events_mm_out, "target_signal", r"$\pi^*_k$" + "\n", xlims)
-    plot_recordable(axs[12], events_mm_out, "readout_signal", r"$\pi_k$" + "\n", xlims)
-    plot_recordable(axs[13], events_mm_out, "error_signal", r"$\pi_k-\pi^*_k$" + "\n", xlims)
+    plot_recordable(axs[5], events_mm_out, "V_m", r"$v_k$" + "\n(mV)", xlims)
+    plot_recordable(axs[6], events_mm_out, "target_signal", r"$\pi^*_k$" + "\n", xlims)
+    plot_recordable(axs[7], events_mm_out, "readout_signal", r"$\pi_k$" + "\n", xlims)
 
     axs[-1].set_xlabel(r"$t$ (ms)")
     axs[-1].set_xlim(*xlims)
