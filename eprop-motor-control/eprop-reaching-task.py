@@ -53,7 +53,7 @@ References
 
 .. [2] Korcsak-Gorzo A, Stapmanns J, Espinoza Valverde JA, Dahmen D, van Albada SJ, Bolten M, Diesmann M.
        Event-based implementation of eligibility propagation (in preparation)
-"""  # pylint: disable=line-too-long # noqa: E501
+"""
 
 # %% ###########################################################################################################
 # Import libraries
@@ -66,18 +66,6 @@ import nest
 import numpy as np
 from cycler import cycler
 from IPython.display import Image
-
-# %% ###########################################################################################################
-# Schematic of network architecture
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# This figure, identical to the one in the description, shows the required network architecture in the center,
-# the input and output of the reaching task above, and lists of the required NEST device, neuron, and
-# synapse models below. The connections that must be established are numbered 1 to 6.
-
-try:
-    Image(filename="./eprop_reaching_task_schematic.png")
-except Exception:
-    pass
 
 # %% ###########################################################################################################
 # Setup
@@ -98,7 +86,7 @@ np.random.seed(rng_seed)  # fix numpy random seed
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
 n_batch = 1  # batch size, 1 in reference [2]
-n_iter = 100  # number of iterations, 2000 in reference [2]
+n_iter = 500  # number of iterations, 2000 in reference [2]
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
@@ -150,11 +138,10 @@ nest.set(**params_setup)
 # %% ###########################################################################################################
 # Create neurons
 # ~~~~~~~~~~~~~~
-# We proceed by creating a certain number of input, recurrent, and readout neurons and setting their parameters.
-# Additionally, we already create an input spike generator and an output target rate generator, which we will
-# configure later.
+# We proceed by creating a certain number of recurrent and readout neurons and setting their parameters.
+# Additionally, we already create an output target rate generator, which we will configure later.
 
-n_in = 100  # number of input neurons
+n_in = 1  # number of input neurons
 n_rec = 100  # number of recurrent neurons
 n_out = 1  # number of readout neurons
 
@@ -185,11 +172,8 @@ params_nrn_out = {
 
 ####################
 
-# Intermediate parrot neurons required between input spike generators and recurrent neurons,
-# since devices cannot establish plastic synapses for technical reasons
-
-gen_spk_in = nest.Create("spike_generator", n_in)
-nrns_in = nest.Create("parrot_neuron", n_in)
+# Create inhomogeneous Poisson generator for input
+gen_poisson_in = nest.Create("inhomogeneous_poisson_generator", n_in)
 
 # The suffix _bsshslm_2020 follows the NEST convention to indicate in the model name the paper
 # that introduced it by the first letter of the authors' last names and the publication year.
@@ -197,7 +181,6 @@ nrns_in = nest.Create("parrot_neuron", n_in)
 nrns_rec = nest.Create("eprop_iaf_bsshslm_2020", n_rec, params_nrn_rec)
 nrns_out = nest.Create("eprop_readout_bsshslm_2020", n_out, params_nrn_out)
 gen_rate_target = nest.Create("step_rate_generator", n_out)
-
 
 # %% ###########################################################################################################
 # Create recorders
@@ -229,7 +212,7 @@ params_mm_out = {
 }
 
 params_wr = {
-    "senders": nrns_in[:n_record_w] + nrns_rec[:n_record_w],  # limit senders to subsample weights to record
+    "senders": nrns_rec[:n_record_w],  # limit senders to subsample weights to record
     "targets": nrns_rec[:n_record_w] + nrns_out,  # limit targets to subsample weights to record from
     "start": duration["total_offset"],
     "stop": duration["total_offset"] + duration["task"],
@@ -314,15 +297,13 @@ params_syn_static = {
 
 nest.SetDefaults("eprop_synapse_bsshslm_2020", params_common_syn_eprop)
 
-nest.Connect(gen_spk_in, nrns_in, params_conn_one_to_one, params_syn_static)  # connection 1
-# nest.Connect(nrns_in, nrns_rec, params_conn_all_to_all, params_syn_in)  # connection 2
-nest.Connect(nrns_in, nrns_rec, params_conn_one_to_one, params_syn_static)  # connection 2
-nest.Connect(nrns_rec, nrns_rec, params_conn_all_to_all, params_syn_rec)  # connection 3
-nest.Connect(nrns_rec, nrns_out, params_conn_all_to_all, params_syn_out)  # connection 4
-nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 5
-nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_target)  # connection 6
+nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_static)  # connection 1
+nest.Connect(nrns_rec, nrns_rec, params_conn_all_to_all, params_syn_rec)  # connection 2
+nest.Connect(nrns_rec, nrns_out, params_conn_all_to_all, params_syn_out)  # connection 3
+nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
+nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_target)  # connection 5
 
-nest.Connect(nrns_in + nrns_rec, sr, params_conn_all_to_all, params_syn_static)
+nest.Connect(nrns_rec, sr, params_conn_all_to_all, params_syn_static)
 
 nest.Connect(mm_rec, nrns_rec_record, params_conn_all_to_all, params_syn_static)
 nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
@@ -332,29 +313,21 @@ nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 # ~~~~~~~~~~~~
 # We load the trajectory data from the file and use it as the input for the reaching task.
 
-trajectory_file = "/home/shimoura/Github/motor-controller-model/eprop-motor-control/trajectory1.txt"
+trajectory_file = "/home/shimoura/Github/motor-controller-model/eprop-motor-control/trajectory4.txt"
 trajectory_data = np.loadtxt(trajectory_file)
 
 # Resample trajectory data to match the new resolution
 trajectory_data = trajectory_data[::10]
 
-# Generate spike times based on the trajectory data
-input_spike_prob = 0.05  # spike probability of frozen input noise
-dtype_in_spks = np.float32  # data type of input spikes - for reproducing TF results set to np.float32
-
-input_spike_bools = (np.random.rand(len(trajectory_data), n_in) < input_spike_prob).swapaxes(0, 1)
-input_spike_bools[:, 0] = 0  # remove spikes in 0th time step of every sequence for technical reasons
-
-sequence_starts = np.arange(0.0, duration["task"], duration["sequence"]) + duration["offset_gen"]
-params_gen_spk_in = []
-for input_spike_bool in input_spike_bools:
-    input_spike_times = np.arange(0.0, duration["sequence"], duration["step"])[input_spike_bool]
-    input_spike_times_all = [input_spike_times + start for start in sequence_starts]
-    params_gen_spk_in.append({"spike_times": np.hstack(input_spike_times_all).astype(dtype_in_spks)})
+# Set the rates of the inhomogeneous Poisson generator based on the trajectory data
+params_gen_poisson_in = {
+    "rate_times": np.arange(0.0, duration["task"], duration["step"]) + duration["offset_gen"],
+    "rate_values": 100.*np.tile(trajectory_data, n_iter * n_batch),
+}
 
 ####################
 
-nest.SetStatus(gen_spk_in, params_gen_spk_in)
+nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
 
 # %% ###########################################################################################################
 # Create output
@@ -381,7 +354,7 @@ nest.SetStatus(gen_rate_target, params_gen_rate_target)
 
 gen_spk_final_update = nest.Create("spike_generator", 1, {"spike_times": [duration["task"] + duration["delays"]]})
 
-nest.Connect(gen_spk_final_update, nrns_in + nrns_rec, "all_to_all", {"weight": 1000.0})
+nest.Connect(gen_spk_final_update, nrns_rec, "all_to_all", {"weight": 1000.0})
 
 # %% ###########################################################################################################
 # Read out pre-training weights
@@ -401,7 +374,7 @@ def get_weights(pop_pre, pop_post):
 
 
 weights_pre_train = {
-    "in_rec": get_weights(nrns_in, nrns_rec),
+    "in_rec": get_weights(nrns_rec, nrns_rec),
     "rec_rec": get_weights(nrns_rec, nrns_rec),
     "rec_out": get_weights(nrns_rec, nrns_out),
 }
@@ -420,7 +393,7 @@ nest.Simulate(duration["sim"])
 # After the training, we can read out the optimized final weights.
 
 weights_post_train = {
-    "in_rec": get_weights(nrns_in, nrns_rec),
+    "in_rec": get_weights(nrns_rec, nrns_rec),
     "rec_rec": get_weights(nrns_rec, nrns_rec),
     "rec_out": get_weights(nrns_rec, nrns_out),
 }
@@ -465,7 +438,6 @@ colors = {
 
 plt.rcParams.update(
     {
-        "font.sans-serif": "Arial",
         "axes.spines.right": False,
         "axes.spines.top": False,
         "axes.prop_cycle": cycler(color=[colors["blue"], colors["red"]]),
@@ -522,7 +494,7 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
 for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps["task"])]:
     fig, axs = plt.subplots(9, 1, sharex=True, figsize=(6, 8), gridspec_kw={"hspace": 0.4, "left": 0.2})
 
-    plot_spikes(axs[0], events_sr, nrns_in, r"$z_i$" + "\n", xlims)
+    plot_spikes(axs[0], events_sr, nrns_rec, r"$z_i$" + "\n", xlims)
     plot_spikes(axs[1], events_sr, nrns_rec, r"$z_j$" + "\n", xlims)
 
     plot_recordable(axs[2], events_mm_rec, "V_m", r"$v_j$" + "\n(mV)", xlims)
@@ -566,7 +538,7 @@ def plot_weight_time_course(ax, events, nrns_senders, nrns_targets, label, ylabe
 
 fig, axs = plt.subplots(3, 1, sharex=True, figsize=(3, 4))
 
-plot_weight_time_course(axs[0], events_wr, nrns_in[:n_record_w], nrns_rec[:n_record_w], "in_rec", r"$W_\text{in}$ (pA)")
+plot_weight_time_course(axs[0], events_wr, nrns_rec[:n_record_w], nrns_rec[:n_record_w], "in_rec", r"$W_\text{in}$ (pA)")
 plot_weight_time_course(
     axs[1], events_wr, nrns_rec[:n_record_w], nrns_rec[:n_record_w], "rec_rec", r"$W_\text{rec}$ (pA)"
 )
