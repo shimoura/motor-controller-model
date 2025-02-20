@@ -87,7 +87,7 @@ np.random.seed(rng_seed)  # fix numpy random seed
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
 n_batch = 1  # batch size, 1 in reference [2]
-n_iter = 10  # number of iterations, 2000 in reference [2]
+n_iter = 100  # number of iterations, 2000 in reference [2]
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
@@ -249,11 +249,16 @@ nrns_rec_record = nrns_rec[:n_record]
 
 params_conn_all_to_all = {"rule": "all_to_all", "allow_autapses": False}
 params_conn_one_to_one = {"rule": "one_to_one"}
+params_conn_bernoulli = {"rule": "pairwise_bernoulli", "p": 0.1}
+
+w_default = 200.0  # default weight strength
+w_rec = 100.0      # recurrent-to-recurrent weight strength
+g = 4.0            # inhibitory-to-excitatory weight ratio
 
 dtype_weights = np.float32  # data type of weights - for reproducing TF results set to np.float32
-weights_in_rec = np.array(400.*np.random.randn(n_in, n_rec).T / np.sqrt(n_in), dtype=dtype_weights)
-weights_rec_out = np.array(400.*np.random.randn(n_rec, n_out).T / np.sqrt(n_rec), dtype=dtype_weights)
-weights_out_rec = np.array(400.*np.random.randn(n_rec, n_out) / np.sqrt(n_rec), dtype=dtype_weights)
+weights_in_rec = np.array(w_default*np.random.randn(n_in, n_rec).T / np.sqrt(n_in), dtype=dtype_weights)
+weights_rec_out = np.array(w_default*np.random.randn(n_rec, n_out).T / np.sqrt(n_rec), dtype=dtype_weights)
+weights_out_rec = np.array(w_default*np.random.randn(n_rec, n_out) / np.sqrt(n_rec), dtype=dtype_weights)
 
 params_common_syn_eprop = {
     "optimizer": {
@@ -307,11 +312,15 @@ params_syn_input = {
 
 # Define the parameters for the recurrent connections
 params_syn_rec_exc = copy.deepcopy(params_syn_base)
-params_syn_rec_exc["weight"] = nest.math.redraw(nest.random.normal(mean=100, std=1), min=0.0, max=1000.)
+params_syn_rec_exc["weight"] = nest.math.redraw(nest.random.normal(
+        mean=w_rec, std=w_rec*0.1
+    ), min=0.0, max=1000.)
 params_syn_rec_exc["synapse_model"] = "eprop_synapse_bsshslm_2020_exc"
 
 params_syn_rec_inh = copy.deepcopy(params_syn_base)
-params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(mean=-400, std=1), min=-1000., max=0.0)
+params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(
+        mean=-w_rec*g, std=g*w_rec*0.1
+    ), min=-1000., max=0.0)
 params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
 
 # Define the parameters for the output connections
@@ -344,8 +353,8 @@ nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_inh", p
 nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_input)  # connection 1
 
 # Connect recurrent neurons to themselves
-nest.Connect(nrns_rec_exc, nrns_rec, params_conn_all_to_all, params_syn_rec_exc)  # connection 2
-nest.Connect(nrns_rec_inh, nrns_rec, params_conn_all_to_all, params_syn_rec_inh)  # connection 2
+nest.Connect(nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc)  # connection 2
+nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh)  # connection 2
 
 # Connect recurrent neurons to readout neurons and vice versa
 nest.Connect(nrns_rec, nrns_out, params_conn_all_to_all, params_syn_out)  # connection 3
@@ -356,7 +365,6 @@ nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_
 
 # Connect recorders to neurons
 nest.Connect(nrns_rec, sr, params_conn_all_to_all, params_syn_static)
-
 nest.Connect(mm_rec, nrns_rec_record, params_conn_all_to_all, params_syn_static)
 nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 
