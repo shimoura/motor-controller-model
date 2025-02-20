@@ -86,7 +86,7 @@ np.random.seed(rng_seed)  # fix numpy random seed
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
 n_batch = 1  # batch size, 1 in reference [2]
-n_iter = 500  # number of iterations, 2000 in reference [2]
+n_iter = 10  # number of iterations, 2000 in reference [2]
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
@@ -313,7 +313,7 @@ nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 # ~~~~~~~~~~~~
 # We load the trajectory data from the file and use it as the input for the reaching task.
 
-trajectory_file = "/home/shimoura/Github/motor-controller-model/eprop-motor-control/trajectory4.txt"
+trajectory_file = "trajectory4.txt"
 trajectory_data = np.loadtxt(trajectory_file)
 
 # Resample trajectory data to match the new resolution
@@ -492,19 +492,18 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
 
 
 for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps["task"])]:
-    fig, axs = plt.subplots(9, 1, sharex=True, figsize=(6, 8), gridspec_kw={"hspace": 0.4, "left": 0.2})
+    fig, axs = plt.subplots(8, 1, sharex=True, figsize=(6, 8), gridspec_kw={"hspace": 0.4, "left": 0.2})
 
-    plot_spikes(axs[0], events_sr, nrns_rec, r"$z_i$" + "\n", xlims)
-    plot_spikes(axs[1], events_sr, nrns_rec, r"$z_j$" + "\n", xlims)
+    plot_spikes(axs[0], events_sr, nrns_rec, r"$z_j$" + "\n", xlims)
 
-    plot_recordable(axs[2], events_mm_rec, "V_m", r"$v_j$" + "\n(mV)", xlims)
-    plot_recordable(axs[3], events_mm_rec, "surrogate_gradient", r"$\psi_j$" + "\n", xlims)
-    plot_recordable(axs[4], events_mm_rec, "learning_signal", r"$L_j$" + "\n(pA)", xlims)
+    plot_recordable(axs[1], events_mm_rec, "V_m", r"$v_j$" + "\n(mV)", xlims)
+    plot_recordable(axs[2], events_mm_rec, "surrogate_gradient", r"$\psi_j$" + "\n", xlims)
+    plot_recordable(axs[3], events_mm_rec, "learning_signal", r"$L_j$" + "\n(pA)", xlims)
 
-    plot_recordable(axs[5], events_mm_out, "V_m", r"$v_k$" + "\n(mV)", xlims)
-    plot_recordable(axs[6], events_mm_out, "target_signal", r"$y^*_k$" + "\n", xlims)
-    plot_recordable(axs[7], events_mm_out, "readout_signal", r"$y_k$" + "\n", xlims)
-    plot_recordable(axs[8], events_mm_out, "error_signal", r"$y_k-y^*_k$" + "\n", xlims)
+    plot_recordable(axs[4], events_mm_out, "V_m", r"$v_k$" + "\n(mV)", xlims)
+    plot_recordable(axs[5], events_mm_out, "target_signal", r"$y^*_k$" + "\n", xlims)
+    plot_recordable(axs[6], events_mm_out, "readout_signal", r"$y_k$" + "\n", xlims)
+    plot_recordable(axs[7], events_mm_out, "error_signal", r"$y_k-y^*_k$" + "\n", xlims)
 
     axs[-1].set_xlabel(r"$t$ (ms)")
     axs[-1].set_xlim(*xlims)
@@ -536,13 +535,12 @@ def plot_weight_time_course(ax, events, nrns_senders, nrns_targets, label, ylabe
         ax.set_ylim(-0.6, 0.6)
 
 
-fig, axs = plt.subplots(3, 1, sharex=True, figsize=(3, 4))
+fig, axs = plt.subplots(2, 1, sharex=True, figsize=(3, 4))
 
-plot_weight_time_course(axs[0], events_wr, nrns_rec[:n_record_w], nrns_rec[:n_record_w], "in_rec", r"$W_\text{in}$ (pA)")
 plot_weight_time_course(
-    axs[1], events_wr, nrns_rec[:n_record_w], nrns_rec[:n_record_w], "rec_rec", r"$W_\text{rec}$ (pA)"
+    axs[0], events_wr, nrns_rec[:n_record_w], nrns_rec[:n_record_w], "rec_rec", r"$W_\text{rec}$ (pA)"
 )
-plot_weight_time_course(axs[2], events_wr, nrns_rec[:n_record_w], nrns_out, "rec_out", r"$W_\text{out}$ (pA)")
+plot_weight_time_course(axs[1], events_wr, nrns_rec[:n_record_w], nrns_out, "rec_out", r"$W_\text{out}$ (pA)")
 
 axs[-1].set_xlabel(r"$t$ (ms)")
 axs[-1].set_xlim(0, steps["task"])
@@ -561,7 +559,7 @@ cmap = mpl.colors.LinearSegmentedColormap.from_list(
     "cmap", ((0.0, colors["blue"]), (0.5, colors["white"]), (1.0, colors["red"]))
 )
 
-fig, axs = plt.subplots(3, 2, sharex="col", sharey="row")
+fig, axs = plt.subplots(2, 2, sharex="col", sharey="row")
 
 all_w_extrema = []
 
@@ -573,21 +571,19 @@ for k in weights_pre_train.keys():
 args = {"cmap": cmap, "vmin": np.min(all_w_extrema), "vmax": np.max(all_w_extrema)}
 
 for i, weights in zip([0, 1], [weights_pre_train, weights_post_train]):
-    axs[0, i].pcolormesh(weights["in_rec"]["weight_matrix"].T, **args)
-    axs[1, i].pcolormesh(weights["rec_rec"]["weight_matrix"], **args)
-    cmesh = axs[2, i].pcolormesh(weights["rec_out"]["weight_matrix"], **args)
+    axs[0, i].pcolormesh(weights["rec_rec"]["weight_matrix"], **args)
+    cmesh = axs[1, i].pcolormesh(weights["rec_out"]["weight_matrix"], **args)
 
-    axs[2, i].set_xlabel("recurrent\nneurons")
+    axs[1, i].set_xlabel("recurrent\nneurons")
 
-axs[0, 0].set_ylabel("input\nneurons")
-axs[1, 0].set_ylabel("recurrent\nneurons")
-axs[2, 0].set_ylabel("readout\nneurons")
+axs[0, 0].set_ylabel("recurrent\nneurons")
+axs[1, 0].set_ylabel("readout\nneurons")
 fig.align_ylabels(axs[:, 0])
 
 axs[0, 0].text(0.5, 1.1, "pre-training", transform=axs[0, 0].transAxes, ha="center")
 axs[0, 1].text(0.5, 1.1, "post-training", transform=axs[0, 1].transAxes, ha="center")
 
-axs[2, 0].yaxis.get_major_locator().set_params(integer=True)
+axs[1, 0].yaxis.get_major_locator().set_params(integer=True)
 
 cbar = plt.colorbar(cmesh, cax=axs[1, 1].inset_axes([1.1, 0.2, 0.05, 0.8]), label="weight (pA)")
 
