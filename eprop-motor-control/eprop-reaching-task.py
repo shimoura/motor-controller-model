@@ -63,6 +63,7 @@ References
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import nest
+import copy
 import numpy as np
 from cycler import cycler
 from IPython.display import Image
@@ -266,6 +267,32 @@ params_common_syn_eprop = {
     "weight_recorder": wr,
 }
 
+params_syn_eprop_exc = {
+    "optimizer": {
+        "type": "gradient_descent",  # algorithm to optimize the weights
+        "batch_size": n_batch,
+        "eta": 1e-4,  # learning rate
+        "Wmin": 0.0,  # pA, minimal limit of the synaptic weights
+        "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
+    },
+    "average_gradient": False,  # if True, average the gradient over the learning window
+    "weight_recorder": wr,
+}
+
+# Note: for some reason, when setting Wmax to zero, an error occurs in the simulation. Therefore, we set it to 1.0.
+# The error: NESTErrors.BadProperty: BadProperty in SLI function CopyModel_l_l_D: weight ≤ maximal weight Wmax required.
+params_syn_eprop_inh = {
+    "optimizer": {
+        "type": "gradient_descent",  # algorithm to optimize the weights
+        "batch_size": n_batch,
+        "eta": 1e-4,  # learning rate
+        "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
+        "Wmax": 1.0,  # pA, maximal limit of the synaptic weights
+    },
+    "average_gradient": False,  # if True, average the gradient over the learning window
+    "weight_recorder": wr,
+}
+
 params_syn_base = {
     "synapse_model": "eprop_synapse_bsshslm_2020",
     "delay": duration["step"],  # ms, dendritic delay
@@ -278,13 +305,17 @@ params_syn_input = {
     "weight": weights_in_rec,
 }
 
-params_syn_rec_exc = params_syn_base.copy()
-params_syn_rec_exc["weight"] = nest.math.redraw(nest.random.normal(mean=100, std=10), min=0., max=1000.)
+# Define the parameters for the recurrent connections
+params_syn_rec_exc = copy.deepcopy(params_syn_base)
+params_syn_rec_exc["weight"] = nest.math.redraw(nest.random.normal(mean=100, std=1), min=0.0, max=1000.)
+params_syn_rec_exc["synapse_model"] = "eprop_synapse_bsshslm_2020_exc"
 
-params_syn_rec_inh = params_syn_base.copy()
-params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(mean=-400, std=40), min=-1000., max=0.)
+params_syn_rec_inh = copy.deepcopy(params_syn_base)
+params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(mean=-400, std=1), min=-1000., max=0.0)
+params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
 
-params_syn_out = params_syn_base.copy()
+# Define the parameters for the output connections
+params_syn_out = copy.deepcopy(params_syn_base)
 params_syn_out["weight"] = weights_rec_out
 
 params_syn_feedback = {
@@ -307,6 +338,8 @@ params_syn_static = {
 ####################
 
 nest.SetDefaults("eprop_synapse_bsshslm_2020", params_common_syn_eprop)
+nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_exc", params_syn_eprop_exc)
+nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_inh", params_syn_eprop_inh)
 
 nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_input)  # connection 1
 
@@ -551,8 +584,6 @@ def plot_weight_time_course(ax, events, nrns_senders, nrns_targets, label, ylabe
 
             ax.step(times, weights, c=colors["blue"])
         ax.set_ylabel(ylabel)
-        ax.set_ylim(-0.6, 0.6)
-
 
 fig, axs = plt.subplots(2, 1, sharex=True, figsize=(3, 4))
 
