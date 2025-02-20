@@ -145,6 +145,10 @@ n_in = 1  # number of input neurons
 n_rec = 100  # number of recurrent neurons
 n_out = 1  # number of readout neurons
 
+# divide the recurrent neurons into excitatory and inhibitory neurons
+n_rec_exc = int(n_rec * 0.8)  # number of excitatory recurrent neurons
+n_rec_inh = n_rec - n_rec_exc  # number of inhibitory recurrent neurons
+
 params_nrn_rec = {
     "C_m": 1.0,  # pF, membrane capacitance - takes effect only if neurons get current input (here not the case)
     "c_reg": 300.0,  # firing rate regularization scaling
@@ -154,10 +158,10 @@ params_nrn_rec = {
     "I_e": 0.0,  # pA, external current input
     "regular_spike_arrival": False,  # If True, input spikes arrive at end of time step, if False at beginning
     "surrogate_gradient_function": "piecewise_linear",  # surrogate gradient / pseudo-derivative function
-    "t_ref": 0.0,  # ms, duration of refractory period
-    "tau_m": 30.0,  # ms, membrane time constant
+    "t_ref": 2.0,  # ms, duration of refractory period
+    "tau_m": 20.0,  # ms, membrane time constant
     "V_m": 0.0,  # mV, initial value of the membrane voltage
-    "V_th": 0.03,  # mV, spike threshold membrane voltage
+    "V_th": 20.0,  # mV, spike threshold membrane voltage
 }
 
 params_nrn_out = {
@@ -166,7 +170,7 @@ params_nrn_out = {
     "I_e": 0.0,
     "loss": "mean_squared_error",  # loss function
     "regular_spike_arrival": False,
-    "tau_m": 30.0,
+    "tau_m": 20.0,
     "V_m": 0.0,
 }
 
@@ -178,7 +182,10 @@ gen_poisson_in = nest.Create("inhomogeneous_poisson_generator", n_in)
 # The suffix _bsshslm_2020 follows the NEST convention to indicate in the model name the paper
 # that introduced it by the first letter of the authors' last names and the publication year.
 
-nrns_rec = nest.Create("eprop_iaf_bsshslm_2020", n_rec, params_nrn_rec)
+nrns_rec_exc = nest.Create("eprop_iaf_bsshslm_2020", n_rec_exc, params_nrn_rec)
+nrns_rec_inh = nest.Create("eprop_iaf_bsshslm_2020", n_rec_inh, params_nrn_rec)
+nrns_rec = nrns_rec_exc + nrns_rec_inh
+
 nrns_out = nest.Create("eprop_readout_bsshslm_2020", n_out, params_nrn_out)
 gen_rate_target = nest.Create("step_rate_generator", n_out)
 
@@ -243,19 +250,17 @@ params_conn_all_to_all = {"rule": "all_to_all", "allow_autapses": False}
 params_conn_one_to_one = {"rule": "one_to_one"}
 
 dtype_weights = np.float32  # data type of weights - for reproducing TF results set to np.float32
-weights_in_rec = np.array(np.random.randn(n_in, n_rec).T / np.sqrt(n_in), dtype=dtype_weights)
-weights_rec_rec = np.array(np.random.randn(n_rec, n_rec).T / np.sqrt(n_rec), dtype=dtype_weights)
-np.fill_diagonal(weights_rec_rec, 0.0)  # since no autapses set corresponding weights to zero
-weights_rec_out = np.array(np.random.randn(n_rec, n_out).T / np.sqrt(n_rec), dtype=dtype_weights)
-weights_out_rec = np.array(np.random.randn(n_rec, n_out) / np.sqrt(n_rec), dtype=dtype_weights)
+weights_in_rec = np.array(400.*np.random.randn(n_in, n_rec).T / np.sqrt(n_in), dtype=dtype_weights)
+weights_rec_out = np.array(400.*np.random.randn(n_rec, n_out).T / np.sqrt(n_rec), dtype=dtype_weights)
+weights_out_rec = np.array(400.*np.random.randn(n_rec, n_out) / np.sqrt(n_rec), dtype=dtype_weights)
 
 params_common_syn_eprop = {
     "optimizer": {
         "type": "gradient_descent",  # algorithm to optimize the weights
         "batch_size": n_batch,
         "eta": 1e-4,  # learning rate
-        "Wmin": -100.0,  # pA, minimal limit of the synaptic weights
-        "Wmax": 100.0,  # pA, maximal limit of the synaptic weights
+        "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
+        "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
     },
     "average_gradient": False,  # if True, average the gradient over the learning window
     "weight_recorder": wr,
@@ -267,11 +272,17 @@ params_syn_base = {
     "tau_m_readout": params_nrn_out["tau_m"],  # ms, for technical reasons pass readout neuron membrane time constant
 }
 
-params_syn_in = params_syn_base.copy()
-params_syn_in["weight"] = weights_in_rec  # pA, initial values for the synaptic weights
+params_syn_input = {
+    "synapse_model": "static_synapse",
+    "delay": duration["step"],
+    "weight": weights_in_rec,
+}
 
-params_syn_rec = params_syn_base.copy()
-params_syn_rec["weight"] = weights_rec_rec
+params_syn_rec_exc = params_syn_base.copy()
+params_syn_rec_exc["weight"] = nest.math.redraw(nest.random.normal(mean=100, std=10), min=0., max=1000.)
+
+params_syn_rec_inh = params_syn_base.copy()
+params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(mean=-400, std=40), min=-1000., max=0.)
 
 params_syn_out = params_syn_base.copy()
 params_syn_out["weight"] = weights_rec_out
@@ -297,12 +308,20 @@ params_syn_static = {
 
 nest.SetDefaults("eprop_synapse_bsshslm_2020", params_common_syn_eprop)
 
-nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_static)  # connection 1
-nest.Connect(nrns_rec, nrns_rec, params_conn_all_to_all, params_syn_rec)  # connection 2
+nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_input)  # connection 1
+
+# Connect recurrent neurons to themselves
+nest.Connect(nrns_rec_exc, nrns_rec, params_conn_all_to_all, params_syn_rec_exc)  # connection 2
+nest.Connect(nrns_rec_inh, nrns_rec, params_conn_all_to_all, params_syn_rec_inh)  # connection 2
+
+# Connect recurrent neurons to readout neurons and vice versa
 nest.Connect(nrns_rec, nrns_out, params_conn_all_to_all, params_syn_out)  # connection 3
 nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
+
+# Connect readout neuron to target signal generator
 nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_target)  # connection 5
 
+# Connect recorders to neurons
 nest.Connect(nrns_rec, sr, params_conn_all_to_all, params_syn_static)
 
 nest.Connect(mm_rec, nrns_rec_record, params_conn_all_to_all, params_syn_static)
