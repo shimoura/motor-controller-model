@@ -87,7 +87,7 @@ np.random.seed(rng_seed)  # fix numpy random seed
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
 n_batch = 1  # batch size, 1 in reference [2]
-n_iter = 100  # number of iterations, 2000 in reference [2]
+n_iter = 500  # number of iterations, 2000 in reference [2]
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
@@ -126,7 +126,7 @@ params_setup = {
     "eprop_learning_window": duration["learning_window"],
     "eprop_reset_neurons_on_update": True,  # if True, reset dynamic variables at start of each update interval
     "eprop_update_interval": duration["sequence"],  # ms, time interval for updating the synaptic weights
-    "print_time": False,  # if True, print time progress bar during simulation, set False if run as code cell
+    "print_time": True,  # if True, print time progress bar during simulation, set False if run as code cell
     "resolution": duration["step"],
     "total_num_virtual_procs": 1,  # number of virtual processes, set in case of distributed computing
 }
@@ -151,12 +151,12 @@ n_rec_exc = int(n_rec * 0.8)  # number of excitatory recurrent neurons
 n_rec_inh = n_rec - n_rec_exc  # number of inhibitory recurrent neurons
 
 params_nrn_rec = {
-    "C_m": 1.0,  # pF, membrane capacitance - takes effect only if neurons get current input (here not the case)
+    "C_m": 250.0,  # pF, membrane capacitance - takes effect only if neurons get current input (here not the case)
     "c_reg": 300.0,  # firing rate regularization scaling
     "E_L": 0.0,  # mV, leak / resting membrane potential
     "f_target": 10.0,  # spikes/s, target firing rate for firing rate regularization
     "gamma": 0.3,  # scaling of the pseudo derivative
-    "I_e": 0.0,  # pA, external current input
+    "I_e": 100.0,  # pA, external current input
     "regular_spike_arrival": False,  # If True, input spikes arrive at end of time step, if False at beginning
     "surrogate_gradient_function": "piecewise_linear",  # surrogate gradient / pseudo-derivative function
     "t_ref": 2.0,  # ms, duration of refractory period
@@ -166,7 +166,7 @@ params_nrn_rec = {
 }
 
 params_nrn_out = {
-    "C_m": 1.0,
+    "C_m": 250.0,
     "E_L": 0.0,
     "I_e": 0.0,
     "loss": "mean_squared_error",  # loss function
@@ -249,22 +249,17 @@ nrns_rec_record = nrns_rec[:n_record]
 
 params_conn_all_to_all = {"rule": "all_to_all", "allow_autapses": False}
 params_conn_one_to_one = {"rule": "one_to_one"}
-params_conn_bernoulli = {"rule": "pairwise_bernoulli", "p": 0.1}
+params_conn_bernoulli = {"rule": "pairwise_bernoulli", "p": 0.1, "allow_autapses": False}
 
-w_default = 200.0  # default weight strength
-w_rec = 100.0      # recurrent-to-recurrent weight strength
+w_default = 100.0  # default weight strength
+w_rec = 50.0      # recurrent-to-recurrent weight strength
 g = 4.0            # inhibitory-to-excitatory weight ratio
-
-dtype_weights = np.float32  # data type of weights - for reproducing TF results set to np.float32
-weights_in_rec = np.array(w_default*np.random.randn(n_in, n_rec).T / np.sqrt(n_in), dtype=dtype_weights)
-weights_rec_out = np.array(w_default*np.random.randn(n_rec, n_out).T / np.sqrt(n_rec), dtype=dtype_weights)
-weights_out_rec = np.array(w_default*np.random.randn(n_rec, n_out) / np.sqrt(n_rec), dtype=dtype_weights)
 
 params_common_syn_eprop = {
     "optimizer": {
         "type": "gradient_descent",  # algorithm to optimize the weights
         "batch_size": n_batch,
-        "eta": 1e-4,  # learning rate
+        "eta": 1e-3,  # learning rate
         "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
         "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
     },
@@ -274,9 +269,6 @@ params_common_syn_eprop = {
 
 params_syn_eprop_exc = {
     "optimizer": {
-        "type": "gradient_descent",  # algorithm to optimize the weights
-        "batch_size": n_batch,
-        "eta": 1e-4,  # learning rate
         "Wmin": 0.0,  # pA, minimal limit of the synaptic weights
         "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
     },
@@ -288,9 +280,6 @@ params_syn_eprop_exc = {
 # The error: NESTErrors.BadProperty: BadProperty in SLI function CopyModel_l_l_D: weight ≤ maximal weight Wmax required.
 params_syn_eprop_inh = {
     "optimizer": {
-        "type": "gradient_descent",  # algorithm to optimize the weights
-        "batch_size": n_batch,
-        "eta": 1e-4,  # learning rate
         "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
         "Wmax": 1.0,  # pA, maximal limit of the synaptic weights
     },
@@ -307,7 +296,9 @@ params_syn_base = {
 params_syn_input = {
     "synapse_model": "static_synapse",
     "delay": duration["step"],
-    "weight": weights_in_rec,
+    "weight": nest.math.redraw(nest.random.normal(
+        mean=w_default, std=w_default*0.1
+    ), min=0.0, max=1000.),
 }
 
 # Define the parameters for the recurrent connections
@@ -323,14 +314,10 @@ params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(
     ), min=-1000., max=0.0)
 params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
 
-# Define the parameters for the output connections
-params_syn_out = copy.deepcopy(params_syn_base)
-params_syn_out["weight"] = weights_rec_out
-
 params_syn_feedback = {
     "synapse_model": "eprop_learning_signal_connection_bsshslm_2020",
     "delay": duration["step"],
-    "weight": weights_out_rec,
+    "weight": w_default,
 }
 
 params_syn_rate_target = {
@@ -357,8 +344,9 @@ nest.Connect(nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc) 
 nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh)  # connection 2
 
 # Connect recurrent neurons to readout neurons and vice versa
-nest.Connect(nrns_rec, nrns_out, params_conn_all_to_all, params_syn_out)  # connection 3
-nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
+nest.Connect(nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc)  # connection 3
+nest.Connect(nrns_rec_inh, nrns_out, params_conn_all_to_all, params_syn_rec_inh)  # connection 3
+# nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
 
 # Connect readout neuron to target signal generator
 nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_target)  # connection 5
@@ -373,16 +361,16 @@ nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 # ~~~~~~~~~~~~
 # We load the trajectory data from the file and use it as the input for the reaching task.
 
-trajectory_file = "trajectory4.txt"
+trajectory_file = "trajectory1.txt"
 trajectory_data = np.loadtxt(trajectory_file)
 
 # Resample trajectory data to match the new resolution
-trajectory_data = trajectory_data[::10]
+trajectory_data = trajectory_data[::10] * 100.
 
 # Set the rates of the inhomogeneous Poisson generator based on the trajectory data
 params_gen_poisson_in = {
     "rate_times": np.arange(0.0, duration["task"], duration["step"]) + duration["offset_gen"],
-    "rate_values": 100.*np.tile(trajectory_data, n_iter * n_batch),
+    "rate_values": np.tile(trajectory_data, n_iter * n_batch),
 }
 
 ####################
@@ -626,7 +614,12 @@ for k in weights_pre_train.keys():
     w_post = weights_post_train[k]["weight"]
     all_w_extrema.append([np.min(w_pre), np.max(w_pre), np.min(w_post), np.max(w_post)])
 
-args = {"cmap": cmap, "vmin": np.min(all_w_extrema), "vmax": np.max(all_w_extrema)}
+# Center the color map at zero
+vmin = np.min(all_w_extrema)
+vmax = np.max(all_w_extrema)
+norm = mpl.colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+
+args = {"cmap": cmap, "norm": norm}
 
 for i, weights in zip([0, 1], [weights_pre_train, weights_post_train]):
     axs[0, i].pcolormesh(weights["rec_rec"]["weight_matrix"], **args)
