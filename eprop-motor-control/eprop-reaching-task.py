@@ -87,7 +87,7 @@ np.random.seed(rng_seed)  # fix numpy random seed
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
 n_batch = 1  # batch size, 1 in reference [2]
-n_iter = 500  # number of iterations, 2000 in reference [2]
+n_iter = 50  # number of iterations, 2000 in reference [2]
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
@@ -346,7 +346,7 @@ nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh) 
 # Connect recurrent neurons to readout neurons and vice versa
 nest.Connect(nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc)  # connection 3
 nest.Connect(nrns_rec_inh, nrns_out, params_conn_all_to_all, params_syn_rec_inh)  # connection 3
-# nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
+nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
 
 # Connect readout neuron to target signal generator
 nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_target)  # connection 5
@@ -506,6 +506,7 @@ ax.set_xlim(1, n_iter)
 ax.xaxis.get_major_locator().set_params(integer=True)
 
 fig.tight_layout()
+fig.savefig("training_error.png")  # Save the figure
 
 # %% ###########################################################################################################
 # Plot spikes and dynamic variables
@@ -540,7 +541,7 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
 
 
 for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps["task"])]:
-    fig, axs = plt.subplots(8, 1, sharex=True, figsize=(6, 8), gridspec_kw={"hspace": 0.4, "left": 0.2})
+    fig, axs = plt.subplots(8, 1, sharex=True, figsize=(4, 12))
 
     plot_spikes(axs[0], events_sr, nrns_rec, r"$z_j$" + "\n", xlims)
 
@@ -556,7 +557,15 @@ for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps[
     axs[-1].set_xlabel(r"$t$ (ms)")
     axs[-1].set_xlim(*xlims)
 
+    for ax in axs:
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.set_ylabel(ax.get_ylabel(), fontsize=14)
+        for line in ax.get_lines():
+            line.set_linewidth(1.5)  # Increase the linewidth
+
     fig.align_ylabels()
+    fig.tight_layout()
+    fig.savefig(f"spikes_and_dynamic_variables_{xlims[0]}_{xlims[1]}.png", dpi=300)  # Save the figure
 
 # %% ###########################################################################################################
 # Plot weight time courses
@@ -593,6 +602,7 @@ axs[-1].set_xlim(0, steps["task"])
 
 fig.align_ylabels()
 fig.tight_layout()
+fig.savefig("weight_time_courses.png")  # Save the figure
 
 # %% ###########################################################################################################
 # Plot weight matrices
@@ -639,5 +649,6 @@ axs[1, 0].yaxis.get_major_locator().set_params(integer=True)
 cbar = plt.colorbar(cmesh, cax=axs[1, 1].inset_axes([1.1, 0.2, 0.05, 0.8]), label="weight (pA)")
 
 fig.tight_layout()
+fig.savefig("weight_matrices.png")  # Save the figure
 
-plt.show()
+# plt.show()
