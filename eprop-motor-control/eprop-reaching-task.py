@@ -68,6 +68,15 @@ import numpy as np
 from cycler import cycler
 from IPython.display import Image
 
+# Import the function to load the dataset
+import sys
+from pathlib import Path
+
+# Add the parent directory to the system path
+sys.path.append(str(Path(__file__).resolve().parent.parent / "dataset_motor_training"))
+from load_dataset import load_data_file
+
+
 # %% ###########################################################################################################
 # Setup
 # ~~~~~
@@ -144,7 +153,7 @@ nest.set(**params_setup)
 
 n_in = 1  # number of input neurons
 n_rec = 100  # number of recurrent neurons
-n_out = 1  # number of readout neurons
+n_out = 2  # Updated number of readout neurons
 
 # divide the recurrent neurons into excitatory and inhibitory neurons
 n_rec_exc = int(n_rec * 0.8)  # number of excitatory recurrent neurons
@@ -156,7 +165,7 @@ params_nrn_rec = {
     "E_L": 0.0,  # mV, leak / resting membrane potential
     "f_target": 10.0,  # spikes/s, target firing rate for firing rate regularization
     "gamma": 0.3,  # scaling of the pseudo derivative
-    "I_e": 100.0,  # pA, external current input
+    "I_e": 0.0,  # pA, external current input
     "regular_spike_arrival": False,  # If True, input spikes arrive at end of time step, if False at beginning
     "surrogate_gradient_function": "piecewise_linear",  # surrogate gradient / pseudo-derivative function
     "t_ref": 2.0,  # ms, duration of refractory period
@@ -179,6 +188,9 @@ params_nrn_out = {
 
 # Create inhomogeneous Poisson generator for input
 gen_poisson_in = nest.Create("inhomogeneous_poisson_generator", n_in)
+
+# Create Poisson generator for background
+gen_poisson_background = nest.Create("poisson_generator", n_in, {"rate": 100.0})
 
 # The suffix _bsshslm_2020 follows the NEST convention to indicate in the model name the paper
 # that introduced it by the first letter of the authors' last names and the publication year.
@@ -252,7 +264,7 @@ params_conn_one_to_one = {"rule": "one_to_one"}
 params_conn_bernoulli = {"rule": "pairwise_bernoulli", "p": 0.1, "allow_autapses": False}
 
 w_default = 100.0  # default weight strength
-w_rec = 50.0      # recurrent-to-recurrent weight strength
+w_rec = 100.0      # recurrent-to-recurrent weight strength
 g = 4.0            # inhibitory-to-excitatory weight ratio
 
 params_common_syn_eprop = {
@@ -317,13 +329,15 @@ params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
 params_syn_feedback = {
     "synapse_model": "eprop_learning_signal_connection_bsshslm_2020",
     "delay": duration["step"],
-    "weight": w_default,
+    "weight": nest.math.redraw(nest.random.normal(
+        mean=w_rec, std=w_rec*0.1
+    ), min=0.0, max=1000.),
 }
 
 params_syn_rate_target = {
     "synapse_model": "rate_connection_delayed",
     "delay": duration["step"],
-    "receptor_type": 2,  # receptor type over which readout neuron receives target signal
+    "receptor_type": 2,  # receptor type over which readout neurons receive target signals
 }
 
 params_syn_static = {
@@ -337,19 +351,26 @@ nest.SetDefaults("eprop_synapse_bsshslm_2020", params_common_syn_eprop)
 nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_exc", params_syn_eprop_exc)
 nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_inh", params_syn_eprop_inh)
 
-nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_input)  # connection 1
+nest.Connect(gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_input)            # Input to recurrent neurons
+nest.Connect(gen_poisson_background, nrns_rec, params_conn_all_to_all, params_syn_input)    # Background to recurrent neurons
 
 # Connect recurrent neurons to themselves
-nest.Connect(nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc)  # connection 2
-nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh)  # connection 2
+nest.Connect(nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc)  # Excitory to all
+nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh)  # Inhibitory to all
 
-# Connect recurrent neurons to readout neurons and vice versa
-nest.Connect(nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc)  # connection 3
-nest.Connect(nrns_rec_inh, nrns_out, params_conn_all_to_all, params_syn_rec_inh)  # connection 3
-nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # connection 4
+# Connect recurrent neurons to readout neurons
+nest.Connect(nrns_rec_exc[:int(n_rec_exc/2)], nrns_out[0], params_conn_all_to_all, params_syn_rec_exc)  # Half of the excitatory neurons to readout 1
+nest.Connect(nrns_rec_exc[int(n_rec_exc/2):], nrns_out[1], params_conn_all_to_all, params_syn_rec_exc)  # Half of the excitatory neurons to readout 2
 
-# Connect readout neuron to target signal generator
-nest.Connect(gen_rate_target, nrns_out, params_conn_one_to_one, params_syn_rate_target)  # connection 5
+# Connect readout neurons to recurrent neurons
+nest.Connect(nrns_out[0], nrns_rec_exc[int(n_rec_exc/2):], params_conn_all_to_all, params_syn_feedback)  # Readout 1 to half of the excitatory neurons
+nest.Connect(nrns_out[1], nrns_rec_exc[:int(n_rec_exc/2)], params_conn_all_to_all, params_syn_feedback)  # Readout 2 to half of the excitatory neurons
+nest.Connect(nrns_out[0], nrns_rec_inh[int(n_rec_inh/2):], params_conn_all_to_all, params_syn_feedback)  # Readout 1 to inhibitory neurons
+nest.Connect(nrns_out[1], nrns_rec_inh[:int(n_rec_inh/2)], params_conn_all_to_all, params_syn_feedback)  # Readout 2 to inhibitory neurons
+
+# Connect readout neurons to target signal generator
+nest.Connect(gen_rate_target[0], nrns_out[0], params_conn_one_to_one, params_syn_rate_target) # Readout 1 to target signal generator
+nest.Connect(gen_rate_target[1], nrns_out[1], params_conn_one_to_one, params_syn_rate_target) # Readout 2 to target signal generator
 
 # Connect recorders to neurons
 nest.Connect(nrns_rec, sr, params_conn_all_to_all, params_syn_static)
@@ -357,15 +378,43 @@ nest.Connect(mm_rec, nrns_rec_record, params_conn_all_to_all, params_syn_static)
 nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 
 # %% ###########################################################################################################
-# Create input
-# ~~~~~~~~~~~~
-# We load the trajectory data from the file and use it as the input for the reaching task.
+# Load training dataset
+# ~~~~~~~~~~~~~~~~~~~~~
+# We load the trajectory data from a file. The trajectory data is a one-dimensional signal that the network
+# should learn to reproduce. We resample the trajectory data to match the new resolution.
+# Load the training dataset and extract the trajectory number
+dataset_path = Path(__file__).resolve().parent.parent / "dataset_motor_training" / "dataset_spikes.gdf"
+training_dataset = load_data_file(str(dataset_path))
+trajectory_num = int(training_dataset[0][0][0])
+id_pos = training_dataset[0][1]
+time_pos = training_dataset[0][2]
+id_neg = training_dataset[0][3]
+time_neg = training_dataset[0][4]
 
-trajectory_file = "trajectory1.txt"
+# Load the trajectory data used as input for the network
+trajectory_file = dataset_path.parent / f"trajectory{trajectory_num}.txt"
 trajectory_data = np.loadtxt(trajectory_file)
 
+# Convert spiking times in time_pos and time_neg to rates 
+# by dividing the number of spikes by the total time
+# resolution: duration["step"] = 1.0 ms
+# duration sequence: steps["sequence"] = 650 ms
+desired_targets = {
+    "pos": 1e4*np.histogram(time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0] / duration["sequence"],
+    "neg": 1e4*np.histogram(time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0] / duration["sequence"],
+}
+
+# Smooth the target signals
+desired_targets["pos"] = np.convolve(desired_targets["pos"], np.ones(20) / 10, mode="same")
+desired_targets["neg"] = np.convolve(desired_targets["neg"], np.ones(20) / 10, mode="same")
+
+
+# %% ###########################################################################################################
+# Create input
+# ~~~~~~~~~~~~
+
 # Resample trajectory data to match the new resolution
-trajectory_data = trajectory_data[::10] * 100.
+trajectory_data = trajectory_data[::10] * 1e2
 
 # Set the rates of the inhomogeneous Poisson generator based on the trajectory data
 params_gen_poisson_in = {
@@ -382,10 +431,15 @@ nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
 # ~~~~~~~~~~~~~
 # Use the trajectory data as the target signal for the reaching task.
 
-params_gen_rate_target = {
-    "amplitude_times": np.arange(0.0, duration["task"], duration["step"]) + duration["total_offset"],
-    "amplitude_values": np.tile(trajectory_data, n_iter * n_batch),
-}
+params_gen_rate_target = []
+
+params_gen_rate_target = [
+    {
+        "amplitude_times": np.arange(0.0, duration["task"], duration["step"]) + duration["total_offset"],
+        "amplitude_values": np.tile(desired_targets[key], n_iter * n_batch),
+    }
+    for key in desired_targets.keys()
+]
 
 ####################
 
