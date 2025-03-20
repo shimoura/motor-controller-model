@@ -287,11 +287,13 @@ params_syn_eprop_exc = {
 
 # Note: for some reason, when setting Wmax to zero, an error occurs in the simulation. Therefore, we set it to 1.0.
 # The error: NESTErrors.BadProperty: BadProperty in SLI function CopyModel_l_l_D: weight ≤ maximal weight Wmax required.
+# Problem solved: if we set the weight here, than the error does not occur.
 params_syn_eprop_inh = {
     "optimizer": {
         "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
-        "Wmax": 1.0,  # pA, maximal limit of the synaptic weights
+        "Wmax": 0.0,  # pA, maximal limit of the synaptic weights
     },
+    "weight": -400.0,
     "average_gradient": False,  # if True, average the gradient over the learning window
     "weight_recorder": wr,
 }
