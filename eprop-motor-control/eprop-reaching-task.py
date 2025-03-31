@@ -82,21 +82,12 @@ from load_dataset import load_data_file
 # ~~~~~
 
 # %% ###########################################################################################################
-# Initialize random generator
-# ...........................
-# We seed the numpy random generator, which will generate random initial weights as well as random input and
-# output.
-
-rng_seed = 1  # numpy random seed
-np.random.seed(rng_seed)  # fix numpy random seed
-
-# %% ###########################################################################################################
 # Define timing of task
 # .....................
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
-n_batch = 1  # batch size, 1 in reference [2]
-n_iter = 500  # number of iterations, 2000 in reference [2]
+n_batch = 1  # batch size
+n_iter = 1000  # number of iterations
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
@@ -144,6 +135,9 @@ params_setup = {
 
 nest.ResetKernel()
 nest.set(**params_setup)
+nest.SetKernelStatus({
+    'rng_seed': 1234,  # set the random seed for the NEST kernel
+})
 
 # %% ###########################################################################################################
 # Create neurons
@@ -208,7 +202,7 @@ gen_rate_target = nest.Create("step_rate_generator", n_out)
 # experiment, and the recording interval can be increased (see the documentation on the specific recorders). By
 # default, recordings are stored in memory but can also be written to file.
 
-n_record = 1  # number of neurons to record dynamic variables from - this script requires n_record >= 1
+n_record = 2  # number of neurons to record dynamic variables from - this script requires n_record >= 1
 n_record_w = 3  # number of senders and targets to record weights from - this script requires n_record_w >=1
 
 if n_record == 0 or n_record_w == 0:
@@ -268,7 +262,7 @@ params_common_syn_eprop = {
     "optimizer": {
         "type": "gradient_descent",  # algorithm to optimize the weights
         "batch_size": n_batch,
-        "eta": 1e-3,  # learning rate
+        "eta": 1e-2,  # learning rate
         "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
         "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
     },
@@ -397,17 +391,18 @@ time_pos = training_dataset[0][2]
 id_neg = training_dataset[0][3]
 time_neg = training_dataset[0][4]
 
+scale_rate = 1.0e3  # scale factor for the input/target rate
+
 # Load the trajectory data used as input for the network
 trajectory_file = dataset_path.parent / f"trajectory{trajectory_num}.txt"
-trajectory_data = np.loadtxt(trajectory_file) * 1e2  # load and scale the trajectory data
+trajectory_data = np.loadtxt(trajectory_file)  # load the trajectory data
+trajectory_data = (trajectory_data - np.min(trajectory_data)) / (np.max(trajectory_data) - np.min(trajectory_data))  # normalize to 0 to 1
+trajectory_data *= scale_rate  # scale the trajectory data
 
-# Convert spiking times in time_pos and time_neg to rates 
-# by dividing the number of spikes by the total time
-# resolution: duration["step"] = 1.0 ms
-# duration sequence: steps["sequence"] = 650 ms
+# Counts the number of output spikes per time step
 desired_targets = {
-    "pos": 0.5e4*np.histogram(time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0] / duration["sequence"],
-    "neg": 0.5e4*np.histogram(time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0] / duration["sequence"],
+    "pos": np.histogram(time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
+    "neg": np.histogram(time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
 }
 
 # Smooth the target signals
@@ -591,7 +586,7 @@ def plot_recordable(ax, events, recordable, ylabel, xlims):
         ax.plot(events["times"][idc_sender][idc_times], events[recordable][idc_sender][idc_times], lw=0.5)
     ax.set_ylabel(ylabel)
     margin = np.abs(np.max(events[recordable]) - np.min(events[recordable])) * 0.1
-    ax.set_ylim(np.min(events[recordable]) - margin, np.max(events[recordable]) + margin)
+    # ax.set_ylim(np.min(events[recordable]) - margin, np.max(events[recordable]) + margin)
 
 
 def plot_spikes(ax, events, nrns, ylabel, xlims):
