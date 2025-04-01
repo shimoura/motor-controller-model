@@ -129,15 +129,13 @@ params_setup = {
     "print_time": True,  # if True, print time progress bar during simulation, set False if run as code cell
     "resolution": duration["step"],
     "total_num_virtual_procs": 1,  # number of virtual processes, set in case of distributed computing
+    'rng_seed': 1234,  # set the random seed for the NEST kernel
 }
 
 ####################
 
 nest.ResetKernel()
 nest.set(**params_setup)
-nest.SetKernelStatus({
-    'rng_seed': 1234,  # set the random seed for the NEST kernel
-})
 
 # %% ###########################################################################################################
 # Create neurons
@@ -385,29 +383,38 @@ nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 # Load the training dataset and extract the trajectory number
 dataset_path = Path(__file__).resolve().parent.parent / "dataset_motor_training" / "dataset_spikes.gdf"
 training_dataset = load_data_file(str(dataset_path))
-trajectory_num = int(training_dataset[0][0][0])
-id_pos = training_dataset[0][1]
-time_pos = training_dataset[0][2]
-id_neg = training_dataset[0][3]
-time_neg = training_dataset[0][4]
 
-scale_rate = 1.0e3  # scale factor for the input/target rate
+sample_ids = [0]  # indices of the samples to load
+trajectories = []
+desired_targets_list = {"pos": [], "neg": []}
 
-# Load the trajectory data used as input for the network
-trajectory_file = dataset_path.parent / f"trajectory{trajectory_num}.txt"
-trajectory_data = np.loadtxt(trajectory_file)  # load the trajectory data
-trajectory_data = (trajectory_data - np.min(trajectory_data)) / (np.max(trajectory_data) - np.min(trajectory_data))  # normalize to 0 to 1
-trajectory_data *= scale_rate  # scale the trajectory data
+for sample_id in sample_ids:
+    trajectory_num = int(training_dataset[sample_id][0][0])
+    id_pos = training_dataset[sample_id][1]
+    time_pos = training_dataset[sample_id][2]
+    id_neg = training_dataset[sample_id][3]
+    time_neg = training_dataset[sample_id][4]
 
-# Counts the number of output spikes per time step
-desired_targets = {
-    "pos": np.histogram(time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
-    "neg": np.histogram(time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
-}
+    scale_rate = 1.0e3  # scale factor for the input/target rate
 
-# Smooth the target signals
-desired_targets["pos"] = np.convolve(desired_targets["pos"], np.ones(20) / 10, mode="same")
-desired_targets["neg"] = np.convolve(desired_targets["neg"], np.ones(20) / 10, mode="same")
+    # Load the trajectory data used as input for the network
+    trajectory_file = dataset_path.parent / f"trajectory{trajectory_num}.txt"
+    trajectory_data = np.loadtxt(trajectory_file)  # load the trajectory data
+    trajectory_data = (trajectory_data - np.min(trajectory_data)) / (np.max(trajectory_data) - np.min(trajectory_data))  # normalize to 0 to 1
+    trajectory_data *= scale_rate  # scale the trajectory data
+
+    # Counts the number of output spikes per time step
+    desired_targets = {
+        "pos": np.histogram(time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
+        "neg": np.histogram(time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
+    }
+
+    # Smooth the target signals
+    desired_targets["pos"] = np.convolve(desired_targets["pos"], np.ones(20) / 10, mode="same")
+    desired_targets["neg"] = np.convolve(desired_targets["neg"], np.ones(20) / 10, mode="same")
+
+    # TODO: store the trajectory data and the desired targets in a list
+    # so that we can use them for multiple samples to train the network
 
 
 # %% ###########################################################################################################
