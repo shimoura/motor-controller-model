@@ -87,13 +87,15 @@ from load_dataset import load_data_file
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
 n_batch = 1  # batch size
-n_iter = 1000  # number of iterations
+n_iter = 500  # number of iterations
 
 steps = {
     "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
 }
 
-steps["learning_window"] = steps["sequence"]  # time steps of window with non-zero learning signals
+steps["learning_window"] = steps[
+    "sequence"
+]  # time steps of window with non-zero learning signals
 steps["task"] = n_iter * n_batch * steps["sequence"]  # time steps of task
 
 steps.update(
@@ -106,15 +108,23 @@ steps.update(
     }
 )
 
-steps["delays"] = steps["delay_in_rec"] + steps["delay_rec_out"] + steps["delay_out_norm"]  # time steps of delays
+steps["delays"] = (
+    steps["delay_in_rec"] + steps["delay_rec_out"] + steps["delay_out_norm"]
+)  # time steps of delays
 
-steps["total_offset"] = steps["offset_gen"] + steps["delays"]  # time steps of total offset
+steps["total_offset"] = (
+    steps["offset_gen"] + steps["delays"]
+)  # time steps of total offset
 
-steps["sim"] = steps["task"] + steps["total_offset"] + steps["extension_sim"]  # time steps of simulation
+steps["sim"] = (
+    steps["task"] + steps["total_offset"] + steps["extension_sim"]
+)  # time steps of simulation
 
 duration = {"step": 1.0}  # ms, temporal resolution of the simulation
 
-duration.update({key: value * duration["step"] for key, value in steps.items()})  # ms, durations
+duration.update(
+    {key: value * duration["step"] for key, value in steps.items()}
+)  # ms, durations
 
 # %% ###########################################################################################################
 # Set up simulation
@@ -125,11 +135,13 @@ duration.update({key: value * duration["step"] for key, value in steps.items()})
 params_setup = {
     "eprop_learning_window": duration["learning_window"],
     "eprop_reset_neurons_on_update": True,  # if True, reset dynamic variables at start of each update interval
-    "eprop_update_interval": duration["sequence"],  # ms, time interval for updating the synaptic weights
+    "eprop_update_interval": duration[
+        "sequence"
+    ],  # ms, time interval for updating the synaptic weights
     "print_time": True,  # if True, print time progress bar during simulation, set False if run as code cell
     "resolution": duration["step"],
     "total_num_virtual_procs": 1,  # number of virtual processes, set in case of distributed computing
-    'rng_seed': 1234,  # set the random seed for the NEST kernel
+    "rng_seed": 1234,  # set the random seed for the NEST kernel
 }
 
 ####################
@@ -138,12 +150,22 @@ nest.ResetKernel()
 nest.set(**params_setup)
 
 # %% ###########################################################################################################
+# Set input parameters
+# ~~~~~~~~~~~~~~~~~~~~~
+
+# Define Radial Basis Function (RBF) parameters
+num_centers = 10  # number of RBF centers
+centers = np.linspace(0.0, np.pi / 2.0, num_centers)  # centers of the RBFs
+width = 0.25  # width of the RBFs
+scale_rate = 1e3  # Scale factor to convert RBF values to Hz
+
+# %% ###########################################################################################################
 # Create neurons
 # ~~~~~~~~~~~~~~
 # We proceed by creating a certain number of recurrent and readout neurons and setting their parameters.
 # Additionally, we already create an output target rate generator, which we will configure later.
 
-n_in = 2  # number of input neurons
+n_in = num_centers  # number of input neurons
 n_rec = 100  # number of recurrent neurons
 n_out = 2  # Updated number of readout neurons
 
@@ -208,21 +230,35 @@ if n_record == 0 or n_record_w == 0:
 
 params_mm_rec = {
     "interval": duration["step"],  # interval between two recorded time points
-    "record_from": ["V_m", "surrogate_gradient", "learning_signal"],  # dynamic variables to record
-    "start": duration["offset_gen"] + duration["delay_in_rec"],  # start time of recording
-    "stop": duration["offset_gen"] + duration["delay_in_rec"] + duration["task"],  # stop time of recording
+    "record_from": [
+        "V_m",
+        "surrogate_gradient",
+        "learning_signal",
+    ],  # dynamic variables to record
+    "start": duration["offset_gen"]
+    + duration["delay_in_rec"],  # start time of recording
+    "stop": duration["offset_gen"]
+    + duration["delay_in_rec"]
+    + duration["task"],  # stop time of recording
 }
 
 params_mm_out = {
     "interval": duration["step"],
-    "record_from": ["V_m", "readout_signal", "readout_signal_unnorm", "target_signal", "error_signal"],
+    "record_from": [
+        "V_m",
+        "readout_signal",
+        "readout_signal_unnorm",
+        "target_signal",
+        "error_signal",
+    ],
     "start": duration["total_offset"],
     "stop": duration["total_offset"] + duration["task"],
 }
 
 params_wr = {
     "senders": nrns_rec[:n_record_w],  # limit senders to subsample weights to record
-    "targets": nrns_rec[:n_record_w] + nrns_out,  # limit targets to subsample weights to record from
+    "targets": nrns_rec[:n_record_w]
+    + nrns_out,  # limit targets to subsample weights to record from
     "start": duration["total_offset"],
     "stop": duration["total_offset"] + duration["task"],
 }
@@ -250,11 +286,15 @@ nrns_rec_record = nrns_rec[:n_record]
 
 params_conn_all_to_all = {"rule": "all_to_all", "allow_autapses": False}
 params_conn_one_to_one = {"rule": "one_to_one"}
-params_conn_bernoulli = {"rule": "pairwise_bernoulli", "p": 0.1, "allow_autapses": False}
+params_conn_bernoulli = {
+    "rule": "pairwise_bernoulli",
+    "p": 0.1,
+    "allow_autapses": False,
+}
 
 w_default = 100.0  # default weight strength
-w_rec = w_default      # recurrent-to-recurrent weight strength
-g = 4.0            # inhibitory-to-excitatory weight ratio
+w_rec = w_default  # recurrent-to-recurrent weight strength
+g = 4.0  # inhibitory-to-excitatory weight ratio
 
 params_common_syn_eprop = {
     "optimizer": {
@@ -293,36 +333,38 @@ params_syn_eprop_inh = {
 params_syn_base = {
     "synapse_model": "eprop_synapse_bsshslm_2020",
     "delay": duration["step"],  # ms, dendritic delay
-    "tau_m_readout": params_nrn_out["tau_m"],  # ms, for technical reasons pass readout neuron membrane time constant
+    "tau_m_readout": params_nrn_out[
+        "tau_m"
+    ],  # ms, for technical reasons pass readout neuron membrane time constant
 }
 
 params_syn_input = {
     "synapse_model": "static_synapse",
     "delay": duration["step"],
-    "weight": nest.math.redraw(nest.random.normal(
-        mean=w_default, std=w_default*0.1
-    ), min=0.0, max=1000.),
+    "weight": nest.math.redraw(
+        nest.random.normal(mean=w_default, std=w_default * 0.1), min=0.0, max=1000.0
+    ),
 }
 
 # Define the parameters for the recurrent connections
 params_syn_rec_exc = copy.deepcopy(params_syn_base)
-params_syn_rec_exc["weight"] = nest.math.redraw(nest.random.normal(
-        mean=w_rec, std=w_rec*0.1
-    ), min=0.0, max=1000.)
+params_syn_rec_exc["weight"] = nest.math.redraw(
+    nest.random.normal(mean=w_rec, std=w_rec * 0.1), min=0.0, max=1000.0
+)
 params_syn_rec_exc["synapse_model"] = "eprop_synapse_bsshslm_2020_exc"
 
 params_syn_rec_inh = copy.deepcopy(params_syn_base)
-params_syn_rec_inh["weight"] = nest.math.redraw(nest.random.normal(
-        mean=-w_rec*g, std=g*w_rec*0.1
-    ), min=-1000., max=0.0)
+params_syn_rec_inh["weight"] = nest.math.redraw(
+    nest.random.normal(mean=-w_rec * g, std=g * w_rec * 0.1), min=-1000.0, max=0.0
+)
 params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
 
 params_syn_feedback = {
     "synapse_model": "eprop_learning_signal_connection_bsshslm_2020",
     "delay": duration["step"],
-    "weight": nest.math.redraw(nest.random.normal(
-        mean=w_rec, std=w_rec*0.1
-    ), min=0.0, max=1000.),
+    "weight": nest.math.redraw(
+        nest.random.normal(mean=w_rec, std=w_rec * 0.1), min=0.0, max=1000.0
+    ),
 }
 
 params_syn_rate_target = {
@@ -339,36 +381,55 @@ params_syn_static = {
 ####################
 
 nest.SetDefaults("eprop_synapse_bsshslm_2020", params_common_syn_eprop)
-nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_exc", params_syn_eprop_exc)
-nest.CopyModel("eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_inh", params_syn_eprop_inh)
+nest.CopyModel(
+    "eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_exc", params_syn_eprop_exc
+)
+nest.CopyModel(
+    "eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_inh", params_syn_eprop_inh
+)
 
-# Connect the inverted Poisson generator to half of the excitatory and inhibitory recurrent neurons
-nest.Connect(gen_poisson_in[0], nrns_rec_exc[:int(n_rec_exc / 2)], params_conn_all_to_all, params_syn_input)
-nest.Connect(gen_poisson_in[0], nrns_rec_inh[:int(n_rec_inh / 2)], params_conn_all_to_all, params_syn_input)
-
-# Connect the original Poisson generator to the other half of the excitatory and inhibitory recurrent neurons
-nest.Connect(gen_poisson_in[1], nrns_rec_exc[int(n_rec_exc / 2):], params_conn_all_to_all, params_syn_input)
-nest.Connect(gen_poisson_in[1], nrns_rec_inh[int(n_rec_inh / 2):], params_conn_all_to_all, params_syn_input)
+# Connect each Poisson generator to a proportion of the excitatory and inhibitory populations
+for i, poisson_node in enumerate(gen_poisson_in):
+    # Connect to a proportion of excitatory neurons
+    nest.Connect(
+        poisson_node,
+        nrns_rec_exc[int(i * n_rec_exc / n_in) : int((i + 1) * n_rec_exc / n_in)],
+        params_conn_all_to_all,
+        params_syn_input,
+    )
+    # Connect to a proportion of inhibitory neurons
+    nest.Connect(
+        poisson_node,
+        nrns_rec_inh[int(i * n_rec_inh / n_in) : int((i + 1) * n_rec_inh / n_in)],
+        params_conn_all_to_all,
+        params_syn_input,
+    )
 
 # Connect recurrent neurons to themselves
-nest.Connect(nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc)  # Excitory to all
-nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh)  # Inhibitory to all
+nest.Connect(
+    nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc
+)  # Excitory to all
+nest.Connect(
+    nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh
+)  # Inhibitory to all
 
 # Connect recurrent neurons to readout neurons
-# nest.Connect(nrns_rec_exc[:int(n_rec_exc/2)], nrns_out[0], params_conn_all_to_all, params_syn_rec_exc)  # Half of the excitatory neurons to readout 1
-# nest.Connect(nrns_rec_exc[int(n_rec_exc/2):], nrns_out[1], params_conn_all_to_all, params_syn_rec_exc)  # Half of the excitatory neurons to readout 2
-nest.Connect(nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc)  # Excitory to all readout neurons
+nest.Connect(
+    nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc
+)  # Excitory to all readout neurons
 
 # Connect readout neurons to recurrent neurons
-# nest.Connect(nrns_out[0], nrns_rec_exc[:int(n_rec_exc/2)], params_conn_all_to_all, params_syn_feedback)  # Readout 1 to half of the excitatory neurons
-# nest.Connect(nrns_out[1], nrns_rec_exc[int(n_rec_exc/2):], params_conn_all_to_all, params_syn_feedback)  # Readout 2 to half of the excitatory neurons
-# nest.Connect(nrns_out[0], nrns_rec_inh[:int(n_rec_inh/2)], params_conn_all_to_all, params_syn_feedback)  # Readout 1 to inhibitory neurons
-# nest.Connect(nrns_out[1], nrns_rec_inh[int(n_rec_inh/2):], params_conn_all_to_all, params_syn_feedback)  # Readout 2 to inhibitory neurons
-nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)  # Readout to all neurons
+nest.Connect(
+    nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback
+)  # Readout to all neurons
 
 # Connect readout neurons to target signal generator
-nest.Connect(gen_rate_target[0], nrns_out[0], params_conn_one_to_one, params_syn_rate_target) # Readout 1 to target signal generator
-nest.Connect(gen_rate_target[1], nrns_out[1], params_conn_one_to_one, params_syn_rate_target) # Readout 2 to target signal generator
+nest.Connect(
+    gen_rate_target[0], nrns_out[0], params_conn_one_to_one, params_syn_rate_target
+)  # Readout 1 to target signal generator
+nest.Connect(
+    gen_rate_target[1], nrns_out[1], params_conn_one_to_one, params_syn_rate_target
+)  # Readout 2 to target signal generator
 
 # Connect recorders to neurons
 nest.Connect(nrns_rec, sr, params_conn_all_to_all, params_syn_static)
@@ -381,7 +442,11 @@ nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 # We load the trajectory data from a file. The trajectory data is a one-dimensional signal that the network
 # should learn to reproduce. We resample the trajectory data to match the new resolution.
 # Load the training dataset and extract the trajectory number
-dataset_path = Path(__file__).resolve().parent.parent / "dataset_motor_training" / "dataset_spikes.gdf"
+dataset_path = (
+    Path(__file__).resolve().parent.parent
+    / "dataset_motor_training"
+    / "dataset_spikes.gdf"
+)
 training_dataset = load_data_file(str(dataset_path))
 
 sample_ids = [0]  # indices of the samples to load
@@ -395,53 +460,70 @@ for sample_id in sample_ids:
     id_neg = training_dataset[sample_id][3]
     time_neg = training_dataset[sample_id][4]
 
-    scale_rate = 1.0e3  # scale factor for the input/target rate
-
     # Load the trajectory data used as input for the network
     trajectory_file = dataset_path.parent / f"trajectory{trajectory_num}.txt"
     trajectory_data = np.loadtxt(trajectory_file)  # load the trajectory data
-    trajectory_data = (trajectory_data - np.min(trajectory_data)) / (np.max(trajectory_data) - np.min(trajectory_data))  # normalize to 0 to 1
-    trajectory_data *= scale_rate  # scale the trajectory data
+
+    # Resample trajectory data to match the code resolution of 1.0 ms
+    trajectory_data = trajectory_data[::10]
+
+    # Store the trajectory data
+    trajectories.append(trajectory_data)
 
     # Counts the number of output spikes per time step
     desired_targets = {
-        "pos": np.histogram(time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
-        "neg": np.histogram(time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"]))[0],
+        "pos": np.histogram(
+            time_pos, bins=int(duration["sequence"]), range=(0, duration["sequence"])
+        )[0],
+        "neg": np.histogram(
+            time_neg, bins=int(duration["sequence"]), range=(0, duration["sequence"])
+        )[0],
     }
 
     # Smooth the target signals
-    desired_targets["pos"] = np.convolve(desired_targets["pos"], np.ones(20) / 10, mode="same")
-    desired_targets["neg"] = np.convolve(desired_targets["neg"], np.ones(20) / 10, mode="same")
+    desired_targets["pos"] = np.convolve(
+        desired_targets["pos"], np.ones(20) / 10, mode="same"
+    )
+    desired_targets["neg"] = np.convolve(
+        desired_targets["neg"], np.ones(20) / 10, mode="same"
+    )
 
     # TODO: store the trajectory data and the desired targets in a list
     # so that we can use them for multiple samples to train the network
-
 
 # %% ###########################################################################################################
 # Create input
 # ~~~~~~~~~~~~
 
-# Resample trajectory data to match the new resolution
-trajectory_data = trajectory_data[::10]
 
-# Resample trajectory data to match the new resolution and invert it in time
-trajectory_data_inverted = trajectory_data[::-1]
+# Radial basis function (RBF) parameters for encoding the trajectory data
+def gaussian_rbf(x, center, width):
+    return np.exp(-((x - center) ** 2) / (2 * width**2))
 
-# Set the rates of the inhomogeneous Poisson generator based on the trajectory data
-params_gen_poisson_in = {
-    "rate_times": np.arange(0.0, duration["task"], duration["step"]) + duration["offset_gen"],
-    "rate_values": np.tile(trajectory_data, n_iter * n_batch),
-}
 
-# Set the rates of the inhomogeneous Poisson generator for the inverted trajectory data
-params_gen_poisson_in_inverted = {
-    "rate_times": np.arange(0.0, duration["task"], duration["step"]) + duration["offset_gen"],
-    "rate_values": np.tile(trajectory_data_inverted, n_iter * n_batch),
-}
+trajectory_sample = trajectories[0]  # Use the first trajectory sample
+
+# Compute RBF-transformed inputs
+rbf_inputs = np.zeros((len(trajectory_sample), num_centers))
+for i, center in enumerate(centers):
+    rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
+
+# Generate rate-based signals from RBF values
+rate_based_rbf_inputs = rbf_inputs * scale_rate  # Convert to Hz
+
+# Use RBF-transformed inputs as rates for Poisson generators
+params_gen_poisson_in = [
+    {
+        "rate_times": np.arange(0.0, duration["task"], duration["step"])
+        + duration["offset_gen"],
+        "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter * n_batch),
+    }
+    for n_center in range(num_centers)
+]
 
 ####################
 
-nest.SetStatus(gen_poisson_in, [params_gen_poisson_in, params_gen_poisson_in_inverted])
+nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
 
 # %% ###########################################################################################################
 # Create output
@@ -452,8 +534,9 @@ params_gen_rate_target = []
 
 params_gen_rate_target = [
     {
-        "amplitude_times": np.arange(0.0, duration["task"], duration["step"]) + duration["total_offset"],
-        "amplitude_values": np.tile(desired_targets[key], n_iter * n_batch),
+        "amplitude_times": np.arange(0.0, duration["task"], duration["step"])
+        + duration["total_offset"],
+        "amplitude_values": np.tile(desired_targets[key] * 1e1, n_iter * n_batch),
     }
     for key in desired_targets.keys()
 ]
@@ -471,7 +554,9 @@ nest.SetStatus(gen_rate_target, params_gen_rate_target)
 # the last update interval, by sending a strong spike to all neurons that form the presynaptic side of an eprop
 # synapse. This step is required purely for technical reasons.
 
-gen_spk_final_update = nest.Create("spike_generator", 1, {"spike_times": [duration["task"] + duration["delays"]]})
+gen_spk_final_update = nest.Create(
+    "spike_generator", 1, {"spike_times": [duration["task"] + duration["delays"]]}
+)
 
 nest.Connect(gen_spk_final_update, nrns_rec, "all_to_all", {"weight": 1000.0})
 
@@ -589,8 +674,14 @@ fig.savefig("training_error.png")  # Save the figure
 def plot_recordable(ax, events, recordable, ylabel, xlims):
     for sender in set(events["senders"]):
         idc_sender = events["senders"] == sender
-        idc_times = (events["times"][idc_sender] > xlims[0]) & (events["times"][idc_sender] < xlims[1])
-        ax.plot(events["times"][idc_sender][idc_times], events[recordable][idc_sender][idc_times], lw=0.5)
+        idc_times = (events["times"][idc_sender] > xlims[0]) & (
+            events["times"][idc_sender] < xlims[1]
+        )
+        ax.plot(
+            events["times"][idc_sender][idc_times],
+            events[recordable][idc_sender][idc_times],
+            lw=0.5,
+        )
     ax.set_ylabel(ylabel)
     margin = np.abs(np.max(events[recordable]) - np.min(events[recordable])) * 0.1
     # ax.set_ylim(np.min(events[recordable]) - margin, np.max(events[recordable]) + margin)
@@ -611,14 +702,21 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
         ax.set_ylim(0, 1)
 
 
-for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps["task"])]:
+for xlims in [
+    (0, steps["sequence"]),
+    (steps["task"] - steps["sequence"], steps["task"]),
+]:
     fig, axs = plt.subplots(8, 1, sharex=True, figsize=(4, 12))
 
     plot_spikes(axs[0], events_sr, nrns_rec, r"$z_j$" + "\n", xlims)
 
     plot_recordable(axs[1], events_mm_rec, "V_m", r"$v_j$" + "\n(mV)", xlims)
-    plot_recordable(axs[2], events_mm_rec, "surrogate_gradient", r"$\psi_j$" + "\n", xlims)
-    plot_recordable(axs[3], events_mm_rec, "learning_signal", r"$L_j$" + "\n(pA)", xlims)
+    plot_recordable(
+        axs[2], events_mm_rec, "surrogate_gradient", r"$\psi_j$" + "\n", xlims
+    )
+    plot_recordable(
+        axs[3], events_mm_rec, "learning_signal", r"$L_j$" + "\n(pA)", xlims
+    )
 
     plot_recordable(axs[4], events_mm_out, "V_m", r"$v_k$" + "\n(mV)", xlims)
     plot_recordable(axs[5], events_mm_out, "target_signal", r"$y^*_k$" + "\n", xlims)
@@ -629,14 +727,16 @@ for xlims in [(0, steps["sequence"]), (steps["task"] - steps["sequence"], steps[
     axs[-1].set_xlim(*xlims)
 
     for ax in axs:
-        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.tick_params(axis="both", which="major", labelsize=12)
         ax.set_ylabel(ax.get_ylabel(), fontsize=14)
         for line in ax.get_lines():
             line.set_linewidth(1.5)  # Increase the linewidth
 
     fig.align_ylabels()
     fig.tight_layout()
-    fig.savefig(f"spikes_and_dynamic_variables_{xlims[0]}_{xlims[1]}.png", dpi=300)  # Save the figure
+    fig.savefig(
+        f"spikes_and_dynamic_variables_{xlims[0]}_{xlims[1]}.png", dpi=300
+    )  # Save the figure
 
 # %% ###########################################################################################################
 # Plot weight time courses
@@ -656,17 +756,32 @@ def plot_weight_time_course(ax, events, nrns_senders, nrns_targets, label, ylabe
             )
 
             times = [0.0] + events["times"][idc_syn].tolist()
-            weights = [weights_pre_train[label]["weight"][idc_syn_pre]] + events["weights"][idc_syn].tolist()
+            weights = [weights_pre_train[label]["weight"][idc_syn_pre]] + events[
+                "weights"
+            ][idc_syn].tolist()
 
             ax.step(times, weights, c=colors["blue"])
         ax.set_ylabel(ylabel)
 
+
 fig, axs = plt.subplots(2, 1, sharex=True, figsize=(3, 4))
 
 plot_weight_time_course(
-    axs[0], events_wr, nrns_rec[:n_record_w], nrns_rec[:n_record_w], "rec_rec", r"$W_\text{rec}$ (pA)"
+    axs[0],
+    events_wr,
+    nrns_rec[:n_record_w],
+    nrns_rec[:n_record_w],
+    "rec_rec",
+    r"$W_\text{rec}$ (pA)",
 )
-plot_weight_time_course(axs[1], events_wr, nrns_rec[:n_record_w], nrns_out, "rec_out", r"$W_\text{out}$ (pA)")
+plot_weight_time_course(
+    axs[1],
+    events_wr,
+    nrns_rec[:n_record_w],
+    nrns_out,
+    "rec_out",
+    r"$W_\text{out}$ (pA)",
+)
 
 axs[-1].set_xlabel(r"$t$ (ms)")
 axs[-1].set_xlim(0, steps["task"])
@@ -717,7 +832,9 @@ axs[0, 1].text(0.5, 1.1, "post-training", transform=axs[0, 1].transAxes, ha="cen
 
 axs[1, 0].yaxis.get_major_locator().set_params(integer=True)
 
-cbar = plt.colorbar(cmesh, cax=axs[1, 1].inset_axes([1.1, 0.2, 0.05, 0.8]), label="weight (pA)")
+cbar = plt.colorbar(
+    cmesh, cax=axs[1, 1].inset_axes([1.1, 0.2, 0.05, 0.8]), label="weight (pA)"
+)
 
 fig.tight_layout()
 fig.savefig("weight_matrices.png")  # Save the figure
