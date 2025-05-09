@@ -67,6 +67,7 @@ import copy
 import numpy as np
 from cycler import cycler
 from IPython.display import Image
+import yaml
 
 # Import the function to load the dataset
 import sys
@@ -76,6 +77,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent / "dataset_motor_training"))
 from load_dataset import load_data_file
 
+# Load parameters from YAML config file
+config_path = Path(__file__).resolve().parent / "config" / "config.yaml"
+with open(config_path, "r") as f:
+    config = yaml.safe_load(f)
 
 # %% ###########################################################################################################
 # Setup
@@ -86,62 +91,43 @@ from load_dataset import load_data_file
 # .....................
 # The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
 
-n_batch = 1  # batch size
-n_iter = 500  # number of iterations
+# Use parameters from config
+sim_cfg = config["simulation"]
+task_cfg = config["task"]
+
+n_batch = task_cfg["n_batch"]
+n_iter = task_cfg["n_iter"]
 
 steps = {
-    "sequence": 650,  # time steps of one full sequence (650 ms with steps of 1.0 ms)
+    "sequence": task_cfg["sequence"],
 }
-
-steps["learning_window"] = steps[
-    "sequence"
-]  # time steps of window with non-zero learning signals
-steps["task"] = n_iter * n_batch * steps["sequence"]  # time steps of task
-
+steps["learning_window"] = steps["sequence"]
+steps["task"] = n_iter * n_batch * steps["sequence"]
 steps.update(
     {
-        "offset_gen": 1,  # offset since generator signals start from time step 1
-        "delay_in_rec": 1,  # connection delay between input and recurrent neurons
-        "delay_rec_out": 1,  # connection delay between recurrent and output neurons
-        "delay_out_norm": 1,  # connection delay between output neurons for normalization
-        "extension_sim": 1,  # extra time step to close right-open simulation time interval in Simulate()
+        "offset_gen": task_cfg["offset_gen"],
+        "delay_in_rec": task_cfg["delay_in_rec"],
+        "delay_rec_out": task_cfg["delay_rec_out"],
+        "delay_out_norm": task_cfg["delay_out_norm"],
+        "extension_sim": task_cfg["extension_sim"],
     }
 )
+steps["delays"] = steps["delay_in_rec"] + steps["delay_rec_out"] + steps["delay_out_norm"]
+steps["total_offset"] = steps["offset_gen"] + steps["delays"]
+steps["sim"] = steps["task"] + steps["total_offset"] + steps["extension_sim"]
 
-steps["delays"] = (
-    steps["delay_in_rec"] + steps["delay_rec_out"] + steps["delay_out_norm"]
-)  # time steps of delays
+duration = {"step": sim_cfg["step"]}
+duration.update({key: value * duration["step"] for key, value in steps.items()})
 
-steps["total_offset"] = (
-    steps["offset_gen"] + steps["delays"]
-)  # time steps of total offset
-
-steps["sim"] = (
-    steps["task"] + steps["total_offset"] + steps["extension_sim"]
-)  # time steps of simulation
-
-duration = {"step": 1.0}  # ms, temporal resolution of the simulation
-
-duration.update(
-    {key: value * duration["step"] for key, value in steps.items()}
-)  # ms, durations
-
-# %% ###########################################################################################################
 # Set up simulation
-# .................
-# As last step of the setup, we reset the NEST kernel to remove all existing NEST simulation settings and
-# objects and set some NEST kernel parameters, some of which are e-prop-related.
-
 params_setup = {
     "eprop_learning_window": duration["learning_window"],
-    "eprop_reset_neurons_on_update": True,  # if True, reset dynamic variables at start of each update interval
-    "eprop_update_interval": duration[
-        "sequence"
-    ],  # ms, time interval for updating the synaptic weights
-    "print_time": True,  # if True, print time progress bar during simulation, set False if run as code cell
+    "eprop_reset_neurons_on_update": True,
+    "eprop_update_interval": duration["sequence"],
+    "print_time": sim_cfg["print_time"],
     "resolution": duration["step"],
-    "total_num_virtual_procs": 1,  # number of virtual processes, set in case of distributed computing
-    "rng_seed": 1234,  # set the random seed for the NEST kernel
+    "total_num_virtual_procs": sim_cfg["total_num_virtual_procs"],
+    "rng_seed": sim_cfg["rng_seed"],
 }
 
 ####################
@@ -153,11 +139,11 @@ nest.set(**params_setup)
 # Set input parameters
 # ~~~~~~~~~~~~~~~~~~~~~
 
-# Define Radial Basis Function (RBF) parameters
-num_centers = 10  # number of RBF centers
-centers = np.linspace(0.0, np.pi / 2.0, num_centers)  # centers of the RBFs
-width = 0.25  # width of the RBFs
-scale_rate = 1e3  # Scale factor to convert RBF values to Hz
+# RBF parameters from config
+num_centers = config["rbf"]["num_centers"]
+centers = np.linspace(0.0, np.pi / 2.0, num_centers)
+width = config["rbf"]["width"]
+scale_rate = config["rbf"]["scale_rate"]
 
 # %% ###########################################################################################################
 # Create neurons
@@ -165,38 +151,15 @@ scale_rate = 1e3  # Scale factor to convert RBF values to Hz
 # We proceed by creating a certain number of recurrent and readout neurons and setting their parameters.
 # Additionally, we already create an output target rate generator, which we will configure later.
 
-n_in = num_centers  # number of input neurons
-n_rec = 100  # number of recurrent neurons
-n_out = 2  # Updated number of readout neurons
-
-# divide the recurrent neurons into excitatory and inhibitory neurons
-n_rec_exc = int(n_rec * 0.8)  # number of excitatory recurrent neurons
-n_rec_inh = n_rec - n_rec_exc  # number of inhibitory recurrent neurons
-
-params_nrn_rec = {
-    "C_m": 250.0,  # pF, membrane capacitance - takes effect only if neurons get current input (here not the case)
-    "c_reg": 300.0,  # firing rate regularization scaling
-    "E_L": 0.0,  # mV, leak / resting membrane potential
-    "f_target": 10.0,  # spikes/s, target firing rate for firing rate regularization
-    "gamma": 0.3,  # scaling of the pseudo derivative
-    "I_e": 0.0,  # pA, external current input
-    "regular_spike_arrival": False,  # If True, input spikes arrive at end of time step, if False at beginning
-    "surrogate_gradient_function": "piecewise_linear",  # surrogate gradient / pseudo-derivative function
-    "t_ref": 2.0,  # ms, duration of refractory period
-    "tau_m": 20.0,  # ms, membrane time constant
-    "V_m": 0.0,  # mV, initial value of the membrane voltage
-    "V_th": 20.0,  # mV, spike threshold membrane voltage
-}
-
-params_nrn_out = {
-    "C_m": 250.0,
-    "E_L": 0.0,
-    "I_e": 0.0,
-    "loss": "mean_squared_error",  # loss function
-    "regular_spike_arrival": False,
-    "tau_m": 20.0,
-    "V_m": 0.0,
-}
+# Neuron parameters from config
+n_in = num_centers
+n_rec = config["neurons"]["n_rec"]
+n_out = config["neurons"]["n_out"]
+exc_ratio = config["neurons"]["exc_ratio"]
+n_rec_exc = int(n_rec * exc_ratio)
+n_rec_inh = n_rec - n_rec_exc
+params_nrn_rec = config["neurons"]["rec"]
+params_nrn_out = config["neurons"]["out"]
 
 ####################
 
@@ -222,38 +185,22 @@ gen_rate_target = nest.Create("step_rate_generator", n_out)
 # experiment, and the recording interval can be increased (see the documentation on the specific recorders). By
 # default, recordings are stored in memory but can also be written to file.
 
-n_record = 2  # number of neurons to record dynamic variables from - this script requires n_record >= 1
-n_record_w = 3  # number of senders and targets to record weights from - this script requires n_record_w >=1
+# Recording parameters from config
+n_record = config["recording"]["n_record"]
+n_record_w = config["recording"]["n_record_w"]
 
 if n_record == 0 or n_record_w == 0:
     raise ValueError("n_record and n_record_w >= 1 required")
 
-params_mm_rec = {
-    "interval": duration["step"],  # interval between two recorded time points
-    "record_from": [
-        "V_m",
-        "surrogate_gradient",
-        "learning_signal",
-    ],  # dynamic variables to record
-    "start": duration["offset_gen"]
-    + duration["delay_in_rec"],  # start time of recording
-    "stop": duration["offset_gen"]
-    + duration["delay_in_rec"]
-    + duration["task"],  # stop time of recording
-}
+params_mm_rec = config["recording"]["mm_rec"]
+params_mm_rec["interval"] = duration["step"]
+params_mm_rec["start"] = duration["offset_gen"] + duration["delay_in_rec"]
+params_mm_rec["stop"] = duration["offset_gen"] + duration["delay_in_rec"] + duration["task"]
 
-params_mm_out = {
-    "interval": duration["step"],
-    "record_from": [
-        "V_m",
-        "readout_signal",
-        "readout_signal_unnorm",
-        "target_signal",
-        "error_signal",
-    ],
-    "start": duration["total_offset"],
-    "stop": duration["total_offset"] + duration["task"],
-}
+params_mm_out = config["recording"]["mm_out"]
+params_mm_out["interval"] = duration["step"]
+params_mm_out["start"] = duration["total_offset"]
+params_mm_out["stop"] = duration["total_offset"] + duration["task"]
 
 params_wr = {
     "senders": nrns_rec[:n_record_w],  # limit senders to subsample weights to record
@@ -292,41 +239,27 @@ params_conn_bernoulli = {
     "allow_autapses": False,
 }
 
-w_default = 100.0  # default weight strength
-w_rec = w_default  # recurrent-to-recurrent weight strength
-g = 4.0  # inhibitory-to-excitatory weight ratio
+# Synapse parameters from config
+w_default = config["synapses"]["w_default"]
+w_rec = config["synapses"]["w_rec"]
+g = config["synapses"]["g"]
 
 params_common_syn_eprop = {
-    "optimizer": {
-        "type": "gradient_descent",  # algorithm to optimize the weights
-        "batch_size": n_batch,
-        "eta": 1e-2,  # learning rate
-        "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
-        "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
-    },
-    "average_gradient": False,  # if True, average the gradient over the learning window
+    "optimizer": config["synapses"]["exc"]["optimizer"],
+    "average_gradient": config["synapses"]["average_gradient"],
     "weight_recorder": wr,
 }
 
 params_syn_eprop_exc = {
-    "optimizer": {
-        "Wmin": 0.0,  # pA, minimal limit of the synaptic weights
-        "Wmax": 1000.0,  # pA, maximal limit of the synaptic weights
-    },
-    "average_gradient": False,  # if True, average the gradient over the learning window
+    "optimizer": config["synapses"]["exc"]["optimizer"],
+    "average_gradient": config["synapses"]["average_gradient"],
     "weight_recorder": wr,
 }
 
-# Note: for some reason, when setting Wmax to zero, an error occurs in the simulation. Therefore, we set it to 1.0.
-# The error: NESTErrors.BadProperty: BadProperty in SLI function CopyModel_l_l_D: weight ≤ maximal weight Wmax required.
-# Problem solved: if we set the weight here, than the error does not occur.
 params_syn_eprop_inh = {
-    "optimizer": {
-        "Wmin": -1000.0,  # pA, minimal limit of the synaptic weights
-        "Wmax": 0.0,  # pA, maximal limit of the synaptic weights
-    },
-    "weight": -400.0,
-    "average_gradient": False,  # if True, average the gradient over the learning window
+    "optimizer": config["synapses"]["inh"]["optimizer"],
+    "weight": config["synapses"]["inh"]["weight"],
+    "average_gradient": config["synapses"]["average_gradient"],
     "weight_recorder": wr,
 }
 
@@ -629,7 +562,9 @@ loss = 0.5 * np.add.reduceat(error, np.arange(0, steps["task"], steps["sequence"
 # ~~~~~~~~~~~~
 # Then, we plot a series of plots.
 
-do_plotting = True  # if True, plot the results
+# Plotting flag from config
+plotting_cfg = config.get("plotting", {})
+do_plotting = plotting_cfg.get("do_plotting", True)
 
 if not do_plotting:
     exit()
