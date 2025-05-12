@@ -7,15 +7,15 @@ simulation:
 
 # Task/experiment setup parameters
 task:
-  n_batch: 1  # Number of batches per training iteration
-  n_iter: 500  # Number of training iterations
+  n_batch: 2  # Number of batches per training iteration
+  n_iter: 20  # Number of training iterations
   sequence: 650  # Sequence length (steps); duration in ms = sequence * step
   offset_gen: 1  # Input generator offset (steps); duration in ms = offset_gen * step
   delay_in_rec: 1  # Input to recurrent delay (steps); duration in ms = delay_in_rec * step
   delay_rec_out: 1  # Recurrent to output delay (steps); duration in ms = delay_rec_out * step
   delay_out_norm: 1  # Output normalization delay (steps); duration in ms = delay_out_norm * step
   extension_sim: 1  # Simulation extension (steps); duration in ms = extension_sim * step
-  n_samples: 1  # Number of samples per iteration
+  n_samples: 10 # Number of samples
 
 # RBF encoding parameters
 rbf:
@@ -67,7 +67,6 @@ synapses:
   exc:
     optimizer:
       type: gradient_descent  # Optimizer type
-      batch_size: 1  # Batch size for optimizer
       eta: 0.01  # Learning rate for optimizer
       Wmin: 0.0  # Minimum excitatory weight (pA)
       Wmax: 1000.0  # Maximum excitatory weight (pA)
@@ -75,11 +74,10 @@ synapses:
   inh:
     optimizer:
       type: gradient_descent  # Optimizer type
-      batch_size: 1  # Batch size for optimizer
       eta: 0.01  # Learning rate for optimizer
       Wmin: -1000.0  # Minimum inhibitory weight (pA)
       Wmax: 0.0  # Maximum inhibitory weight (pA)
-    weight: -400.0  # Inhibitory synaptic weight (pA)
+    weight: -400.0  # Initial inhibitory synaptic weight (pA), will be overwritten
 
 # Recording parameters
 recording:

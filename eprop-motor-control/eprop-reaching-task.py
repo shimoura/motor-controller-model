@@ -105,7 +105,7 @@ duration = {
     "step": step_ms,
     "sequence": task_cfg["sequence"] * step_ms,
     "learning_window": task_cfg["sequence"] * step_ms,
-    "task": n_iter * n_batch * task_cfg["sequence"] * n_samples * step_ms,
+    "task": n_samples * n_iter * n_batch * task_cfg["sequence"],
     "offset_gen": task_cfg["offset_gen"] * step_ms,
     "delay_in_rec": task_cfg["delay_in_rec"] * step_ms,
     "delay_rec_out": task_cfg["delay_rec_out"] * step_ms,
@@ -241,20 +241,20 @@ w_default = config["synapses"]["w_default"]
 w_rec = config["synapses"]["w_rec"]
 g = config["synapses"]["g"]
 
-params_common_syn_eprop = {
-    "optimizer": config["synapses"]["exc"]["optimizer"],
-    "average_gradient": config["synapses"]["average_gradient"],
-    "weight_recorder": wr,
-}
-
 params_syn_eprop_exc = {
-    "optimizer": config["synapses"]["exc"]["optimizer"],
+    "optimizer": {
+        **config["synapses"]["exc"]["optimizer"],
+        "batch_size": n_batch,
+    },
     "average_gradient": config["synapses"]["average_gradient"],
     "weight_recorder": wr,
 }
 
 params_syn_eprop_inh = {
-    "optimizer": config["synapses"]["inh"]["optimizer"],
+    "optimizer": {
+        **config["synapses"]["inh"]["optimizer"],
+        "batch_size": n_batch,
+    },
     "weight": config["synapses"]["inh"]["weight"],
     "average_gradient": config["synapses"]["average_gradient"],
     "weight_recorder": wr,
@@ -310,7 +310,6 @@ params_syn_static = {
 
 ####################
 
-nest.SetDefaults("eprop_synapse_bsshslm_2020", params_common_syn_eprop)
 nest.CopyModel(
     "eprop_synapse_bsshslm_2020", "eprop_synapse_bsshslm_2020_exc", params_syn_eprop_exc
 )
@@ -379,7 +378,17 @@ dataset_path = (
 )
 training_dataset = load_data_file(str(dataset_path))
 
-sample_ids = list(range(n_samples))  # indices of the samples to load
+# In the dataset, each batch contains 10 samples, so if we select 2 batches and 5 samples per batch,
+# we get 10 samples in total.
+# Create a list of indices for the selected batches and samples
+samples_per_batch = 10  # Number of samples per batch
+sample_ids = []
+
+for batch in range(n_batch):
+    start_index = batch * samples_per_batch  # Calculate the starting index of the batch
+    sample_ids.extend(range(start_index, start_index + n_samples))
+
+
 trajectories = []
 desired_targets_list = {"pos": [], "neg": []}
 
@@ -431,6 +440,7 @@ for sample_id in sample_ids:
 def gaussian_rbf(x, center, width):
     return np.exp(-((x - center) ** 2) / (2 * width**2))
 
+# Prepare RBF inputs for all samples (trajectories)
 rbf_inputs_list = []
 for trajectory_sample in trajectories:
     rbf_inputs = np.zeros((len(trajectory_sample), num_centers))
@@ -445,7 +455,7 @@ params_gen_poisson_in = [
     {
         "rate_times": np.arange(0.0, duration["task"], duration["step"])
         + duration["offset_gen"],
-        "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter * n_batch),
+        "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter),
     }
     for n_center in range(num_centers)
 ]
@@ -471,7 +481,7 @@ params_gen_rate_target = [
     {
         "amplitude_times": np.arange(0.0, duration["task"], duration["step"])
         + duration["total_offset"],
-        "amplitude_values": np.tile(concatenated_desired_targets[key] * 1e1, n_iter * n_batch),
+        "amplitude_values": np.tile(concatenated_desired_targets[key] * 1e1, n_iter),
     }
     for key in concatenated_desired_targets.keys()
 ]
@@ -593,10 +603,10 @@ plt.rcParams.update(
 
 fig, ax = plt.subplots()
 
-ax.plot(range(1, n_samples*n_iter + 1), loss)
+ax.plot(range(1, n_iter*n_samples*n_batch + 1), loss)
 ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} \left( y_k^t -y_k^{*,t}\right)^2$")
 ax.set_xlabel("training iteration")
-ax.set_xlim(1, n_samples*n_iter)
+ax.set_xlim(1, n_iter*n_samples*n_batch)
 ax.xaxis.get_major_locator().set_params(integer=True)
 
 fig.tight_layout()
@@ -641,8 +651,8 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
 
 
 for xlims in [
-    (0, duration["sequence"] * n_samples),
-    (duration["task"] - duration["sequence"] * n_samples, duration["task"]),
+    (0, duration["sequence"]),
+    (duration["task"] - duration["sequence"], duration["task"]),
 ]:
     fig, axs = plt.subplots(8, 1, sharex=True, figsize=(4, 12))
 
