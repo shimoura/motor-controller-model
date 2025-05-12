@@ -15,6 +15,7 @@ task:
   delay_rec_out: 1  # Recurrent to output delay (steps); duration in ms = delay_rec_out * step
   delay_out_norm: 1  # Output normalization delay (steps); duration in ms = delay_out_norm * step
   extension_sim: 1  # Simulation extension (steps); duration in ms = extension_sim * step
+  n_samples: 1  # Number of samples per iteration
 
 # RBF encoding parameters
 rbf:

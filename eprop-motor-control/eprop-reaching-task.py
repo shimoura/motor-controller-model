@@ -89,7 +89,7 @@ with open(config_path, "r") as f:
 # %% ###########################################################################################################
 # Define timing of task
 # .....................
-# The task's temporal structure is then defined, once as time steps and once as durations in milliseconds.
+# The task's temporal structure is now defined only in milliseconds.
 
 # Use parameters from config
 sim_cfg = config["simulation"]
@@ -97,27 +97,24 @@ task_cfg = config["task"]
 
 n_batch = task_cfg["n_batch"]
 n_iter = task_cfg["n_iter"]
+n_samples = task_cfg["n_samples"]
 
-steps = {
-    "sequence": task_cfg["sequence"],
+# Compute all timing values directly in milliseconds
+step_ms = sim_cfg["step"]
+duration = {
+    "step": step_ms,
+    "sequence": task_cfg["sequence"] * step_ms,
+    "learning_window": task_cfg["sequence"] * step_ms,
+    "task": n_iter * n_batch * task_cfg["sequence"] * n_samples * step_ms,
+    "offset_gen": task_cfg["offset_gen"] * step_ms,
+    "delay_in_rec": task_cfg["delay_in_rec"] * step_ms,
+    "delay_rec_out": task_cfg["delay_rec_out"] * step_ms,
+    "delay_out_norm": task_cfg["delay_out_norm"] * step_ms,
+    "extension_sim": task_cfg["extension_sim"] * step_ms,
 }
-steps["learning_window"] = steps["sequence"]
-steps["task"] = n_iter * n_batch * steps["sequence"]
-steps.update(
-    {
-        "offset_gen": task_cfg["offset_gen"],
-        "delay_in_rec": task_cfg["delay_in_rec"],
-        "delay_rec_out": task_cfg["delay_rec_out"],
-        "delay_out_norm": task_cfg["delay_out_norm"],
-        "extension_sim": task_cfg["extension_sim"],
-    }
-)
-steps["delays"] = steps["delay_in_rec"] + steps["delay_rec_out"] + steps["delay_out_norm"]
-steps["total_offset"] = steps["offset_gen"] + steps["delays"]
-steps["sim"] = steps["task"] + steps["total_offset"] + steps["extension_sim"]
-
-duration = {"step": sim_cfg["step"]}
-duration.update({key: value * duration["step"] for key, value in steps.items()})
+duration["delays"] = duration["delay_in_rec"] + duration["delay_rec_out"] + duration["delay_out_norm"]
+duration["total_offset"] = duration["offset_gen"] + duration["delays"]
+duration["sim"] = duration["task"] + duration["total_offset"] + duration["extension_sim"]
 
 # Set up simulation
 params_setup = {
@@ -382,10 +379,11 @@ dataset_path = (
 )
 training_dataset = load_data_file(str(dataset_path))
 
-sample_ids = [0]  # indices of the samples to load
+sample_ids = list(range(n_samples))  # indices of the samples to load
 trajectories = []
 desired_targets_list = {"pos": [], "neg": []}
 
+# Iterate over the sample IDs and load the corresponding data
 for sample_id in sample_ids:
     trajectory_num = int(training_dataset[sample_id][0][0])
     id_pos = training_dataset[sample_id][1]
@@ -421,30 +419,28 @@ for sample_id in sample_ids:
         desired_targets["neg"], np.ones(20) / 10, mode="same"
     )
 
-    # TODO: store the trajectory data and the desired targets in a list
-    # so that we can use them for multiple samples to train the network
+    # Store the desired targets
+    desired_targets_list["pos"].append(desired_targets["pos"])
+    desired_targets_list["neg"].append(desired_targets["neg"])
 
 # %% ###########################################################################################################
 # Create input
 # ~~~~~~~~~~~~
 
-
 # Radial basis function (RBF) parameters for encoding the trajectory data
 def gaussian_rbf(x, center, width):
     return np.exp(-((x - center) ** 2) / (2 * width**2))
 
+rbf_inputs_list = []
+for trajectory_sample in trajectories:
+    rbf_inputs = np.zeros((len(trajectory_sample), num_centers))
+    for i, center in enumerate(centers):
+        rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
+    rbf_inputs_list.append(rbf_inputs)
 
-trajectory_sample = trajectories[0]  # Use the first trajectory sample
+rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * scale_rate  # Combine all trajectories
 
-# Compute RBF-transformed inputs
-rbf_inputs = np.zeros((len(trajectory_sample), num_centers))
-for i, center in enumerate(centers):
-    rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
-
-# Generate rate-based signals from RBF values
-rate_based_rbf_inputs = rbf_inputs * scale_rate  # Convert to Hz
-
-# Use RBF-transformed inputs as rates for Poisson generators
+# Create Poisson generator parameters
 params_gen_poisson_in = [
     {
         "rate_times": np.arange(0.0, duration["task"], duration["step"])
@@ -454,14 +450,20 @@ params_gen_poisson_in = [
     for n_center in range(num_centers)
 ]
 
-####################
-
+# Assign the parameters to the Poisson generators
 nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
 
 # %% ###########################################################################################################
 # Create output
 # ~~~~~~~~~~~~~
-# Use the trajectory data as the target signal for the reaching task.
+
+# The desired target signal is the output data sent by the collaborators (Alberto, Claudia)
+
+# Concatenate the desired targets in desired_targets_list
+concatenated_desired_targets = {
+    "pos": np.concatenate(desired_targets_list["pos"]),
+    "neg": np.concatenate(desired_targets_list["neg"]),
+}
 
 params_gen_rate_target = []
 
@@ -469,14 +471,15 @@ params_gen_rate_target = [
     {
         "amplitude_times": np.arange(0.0, duration["task"], duration["step"])
         + duration["total_offset"],
-        "amplitude_values": np.tile(desired_targets[key] * 1e1, n_iter * n_batch),
+        "amplitude_values": np.tile(concatenated_desired_targets[key] * 1e1, n_iter * n_batch),
     }
-    for key in desired_targets.keys()
+    for key in concatenated_desired_targets.keys()
 ]
 
 ####################
 
 nest.SetStatus(gen_rate_target, params_gen_rate_target)
+
 
 # %% ###########################################################################################################
 # Force final update
@@ -555,7 +558,7 @@ readout_signal = events_mm_out["readout_signal"]
 target_signal = events_mm_out["target_signal"]
 
 error = (readout_signal - target_signal) ** 2
-loss = 0.5 * np.add.reduceat(error, np.arange(0, steps["task"], steps["sequence"]))
+loss = 0.5 * np.add.reduceat(error, np.arange(0, int(duration["task"]), int(duration["sequence"])))
 
 # %% ###########################################################################################################
 # Plot results
@@ -590,10 +593,10 @@ plt.rcParams.update(
 
 fig, ax = plt.subplots()
 
-ax.plot(range(1, n_iter + 1), loss)
+ax.plot(range(1, n_samples*n_iter + 1), loss)
 ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} \left( y_k^t -y_k^{*,t}\right)^2$")
 ax.set_xlabel("training iteration")
-ax.set_xlim(1, n_iter)
+ax.set_xlim(1, n_samples*n_iter)
 ax.xaxis.get_major_locator().set_params(integer=True)
 
 fig.tight_layout()
@@ -638,8 +641,8 @@ def plot_spikes(ax, events, nrns, ylabel, xlims):
 
 
 for xlims in [
-    (0, steps["sequence"]),
-    (steps["task"] - steps["sequence"], steps["task"]),
+    (0, duration["sequence"] * n_samples),
+    (duration["task"] - duration["sequence"] * n_samples, duration["task"]),
 ]:
     fig, axs = plt.subplots(8, 1, sharex=True, figsize=(4, 12))
 
@@ -719,7 +722,7 @@ plot_weight_time_course(
 )
 
 axs[-1].set_xlabel(r"$t$ (ms)")
-axs[-1].set_xlim(0, steps["task"])
+axs[-1].set_xlim(0, duration["task"])
 
 fig.align_ylabels()
 fig.tight_layout()
