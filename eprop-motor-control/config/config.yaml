@@ -2,20 +2,20 @@
 simulation:
   rng_seed: 1234  # Random seed for reproducibility
   print_time: true  # Print simulation progress (true/false)
-  total_num_virtual_procs: 1  # Number of virtual processes for NEST
+  total_num_virtual_procs: 4  # Number of virtual processes for NEST
   step: 1.0  # Simulation time step (ms)
 
 # Task/experiment setup parameters
 task:
   n_batch: 2  # Number of batches per training iteration
-  n_iter: 20  # Number of training iterations
+  n_iter: 100  # Number of training iterations
   sequence: 650  # Sequence length (steps); duration in ms = sequence * step
   offset_gen: 1  # Input generator offset (steps); duration in ms = offset_gen * step
   delay_in_rec: 1  # Input to recurrent delay (steps); duration in ms = delay_in_rec * step
   delay_rec_out: 1  # Recurrent to output delay (steps); duration in ms = delay_rec_out * step
   delay_out_norm: 1  # Output normalization delay (steps); duration in ms = delay_out_norm * step
   extension_sim: 1  # Simulation extension (steps); duration in ms = extension_sim * step
-  n_samples: 10 # Number of samples
+  n_samples: 1 # Number of samples
 
 # RBF encoding parameters
 rbf:
