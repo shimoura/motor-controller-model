@@ -1,0 +1,30 @@
+name: motor-controller
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - ipykernel
+  - numpy
+  - ca-certificates
+  - openssl
+  - pandas
+  - matplotlib
+  - nest-simulator
+  - python
+  - certifi
+  - pyyaml
+  - pip
+  - h5py
+  - statsmodels
+  - pip:
+      - cached-property==1.5.2
+      - exceptiongroup==1.2.2
+      - importlib_metadata==8.5.0
+      - munkres==1.1.4
+      - pickleshare==0.7.5
+      - PySide6==6.8.0.2
+      - setuptools==75.8.0
+      - shiboken6==6.8.0.2
+      - typing_extensions==4.12.2
+      - unicodedata2==16.0.0
+      - wheel==0.45.1
