@@ -164,8 +164,8 @@ def run_simulation(
     step_ms = sim_cfg["step"]
     duration = {
         "step": step_ms,
-        "sequence": task_cfg["sequence"] * step_ms,
-        "learning_window": task_cfg["sequence"] * step_ms,
+        "sequence": task_cfg["sequence"],
+        "learning_window": task_cfg["sequence"],
         "task": n_samples * n_iter * n_batch * task_cfg["sequence"],
         "offset_gen": task_cfg["offset_gen"] * step_ms,
         "delay_in_rec": task_cfg["delay_in_rec"] * step_ms,
@@ -478,6 +478,7 @@ def run_simulation(
         sample_ids.extend(range(start_index, start_index + n_samples))
 
     trajectories = []
+    trajectory_original_resolution = 0.1 # Original resolution of the trajectory data in ms
     desired_targets_list = {"pos": [], "neg": []}
 
     # Iterate over the sample IDs and load the corresponding data
@@ -493,7 +494,7 @@ def run_simulation(
         trajectory_data = np.loadtxt(trajectory_file)  # load the trajectory data
 
         # Resample trajectory data to match the code resolution of 1.0 ms
-        trajectory_data = trajectory_data[::10]
+        trajectory_data = trajectory_data[::int(duration["step"] / trajectory_original_resolution)]
 
         # Store the trajectory data
         trajectories.append(trajectory_data)
@@ -502,13 +503,13 @@ def run_simulation(
         desired_targets = {
             "pos": np.histogram(
                 time_pos,
-                bins=int(duration["sequence"]),
-                range=(0, duration["sequence"]),
+                bins=int(duration["sequence"]/ duration["step"]),
+                range=(0, int(duration["sequence"]/ duration["step"])),
             )[0],
             "neg": np.histogram(
                 time_neg,
-                bins=int(duration["sequence"]),
-                range=(0, duration["sequence"]),
+                bins=int(duration["sequence"]/ duration["step"]),
+                range=(0, int(duration["sequence"]/ duration["step"])),
             )[0],
         }
 
@@ -523,6 +524,10 @@ def run_simulation(
         # Store the desired targets
         desired_targets_list["pos"].append(desired_targets["pos"])
         desired_targets_list["neg"].append(desired_targets["neg"])
+
+    # Get the length of the trajectory sample for later use
+    trajectory_sample = trajectories[0]
+    length_trajectory_sample = len(trajectory_sample)
 
     # %% ###########################################################################################################
     # Create input
@@ -544,11 +549,13 @@ def run_simulation(
         np.vstack(rbf_inputs_list) * scale_rate
     )  # Combine all trajectories
 
+    # Use trajectory_sample length to determine the number of time steps
+    in_rate_times = np.arange(length_trajectory_sample * n_iter * n_batch) * duration["step"] + duration["offset_gen"]
+
     # Create Poisson generator parameters
     params_gen_poisson_in = [
         {
-            "rate_times": np.arange(0.0, duration["task"], duration["step"])
-            + duration["offset_gen"],
+            "rate_times": in_rate_times,
             "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter),
         }
         for n_center in range(num_centers)
@@ -571,10 +578,15 @@ def run_simulation(
 
     params_gen_rate_target = []
 
+    length_target_sample = len(concatenated_desired_targets["pos"])
+    target_amp_times = np.arange(
+        length_target_sample * n_iter * n_batch
+    ) * duration["step"] + duration["offset_gen"]
+    print(len(concatenated_desired_targets['pos']))
+
     params_gen_rate_target = [
         {
-            "amplitude_times": np.arange(0.0, duration["task"], duration["step"])
-            + duration["total_offset"],
+            "amplitude_times": target_amp_times,
             "amplitude_values": np.tile(
                 concatenated_desired_targets[key] * 1e1, n_iter
             ),

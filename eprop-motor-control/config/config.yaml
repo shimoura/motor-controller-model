@@ -9,7 +9,7 @@ simulation:
 task:
   n_batch: 1  # Number of batches per training iteration
   n_iter: 100  # Number of training iterations
-  sequence: 650  # Sequence length (steps); duration in ms = sequence * step
+  sequence: 650  # Sequence length (steps); duration in ms
   offset_gen: 1  # Input generator offset (steps); duration in ms = offset_gen * step
   delay_in_rec: 1  # Input to recurrent delay (steps); duration in ms = delay_in_rec * step
   delay_rec_out: 1  # Recurrent to output delay (steps); duration in ms = delay_rec_out * step
