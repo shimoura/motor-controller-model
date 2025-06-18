@@ -28,7 +28,7 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
         data = np.load(fpath)
         loss = data["loss"]
         metric = metric_fn(loss)
-        label = os.path.relpath(fpath, results_dir).replace("results.npz", "")
+        label = os.path.relpath(fpath, results_dir).replace("/results.npz", "")
         metrics.append((label, metric, loss))
 
     if not metrics:
@@ -108,7 +108,7 @@ def plot_spikes_and_dynamics(
             ax.plot(
                 events["times"][idc_sender][idc_times],
                 events[recordable][idc_sender][idc_times],
-                lw=0.5,
+                lw=1.5,
             )
         ax.set_ylabel(ylabel)
 
@@ -134,42 +134,42 @@ def plot_spikes_and_dynamics(
     ]
     fig, axs = plt.subplots(8, 2, sharex="col", figsize=(8, 12))
     # Left column: pre-training window
-    plot_spikes(axs[0, 0], events_sr, nrns_rec, r"$z_j$\n", xlims_list[0])
-    plot_recordable(axs[1, 0], events_mm_rec, "V_m", r"$v_j$\n(mV)", xlims_list[0])
+    plot_spikes(axs[0, 0], events_sr, nrns_rec, r"$z_j$", xlims_list[0])
+    plot_recordable(axs[1, 0], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[0])
     plot_recordable(
-        axs[2, 0], events_mm_rec, "surrogate_gradient", r"$\psi_j$\n", xlims_list[0]
+        axs[2, 0], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[0]
     )
     plot_recordable(
-        axs[3, 0], events_mm_rec, "learning_signal", r"$L_j$\n(pA)", xlims_list[0]
+        axs[3, 0], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[0]
     )
-    plot_recordable(axs[4, 0], events_mm_out, "V_m", r"$v_k$\n(mV)", xlims_list[0])
+    plot_recordable(axs[4, 0], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[0])
     plot_recordable(
-        axs[5, 0], events_mm_out, "target_signal", r"$y^*_k$\n", xlims_list[0]
-    )
-    plot_recordable(
-        axs[6, 0], events_mm_out, "readout_signal", r"$y_k$\n", xlims_list[0]
+        axs[5, 0], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[0]
     )
     plot_recordable(
-        axs[7, 0], events_mm_out, "error_signal", r"$y_k-y^*_k$\n", xlims_list[0]
+        axs[6, 0], events_mm_out, "readout_signal", r"$y_k$", xlims_list[0]
+    )
+    plot_recordable(
+        axs[7, 0], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[0]
     )
     # Right column: post-training window
-    plot_spikes(axs[0, 1], events_sr, nrns_rec, r"$z_j$\n", xlims_list[1])
-    plot_recordable(axs[1, 1], events_mm_rec, "V_m", r"$v_j$\n(mV)", xlims_list[1])
+    plot_spikes(axs[0, 1], events_sr, nrns_rec, r"$z_j$", xlims_list[1])
+    plot_recordable(axs[1, 1], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[1])
     plot_recordable(
-        axs[2, 1], events_mm_rec, "surrogate_gradient", r"$\psi_j$\n", xlims_list[1]
+        axs[2, 1], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[1]
     )
     plot_recordable(
-        axs[3, 1], events_mm_rec, "learning_signal", r"$L_j$\n(pA)", xlims_list[1]
+        axs[3, 1], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[1]
     )
-    plot_recordable(axs[4, 1], events_mm_out, "V_m", r"$v_k$\n(mV)", xlims_list[1])
+    plot_recordable(axs[4, 1], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[1])
     plot_recordable(
-        axs[5, 1], events_mm_out, "target_signal", r"$y^*_k$\n", xlims_list[1]
-    )
-    plot_recordable(
-        axs[6, 1], events_mm_out, "readout_signal", r"$y_k$\n", xlims_list[1]
+        axs[5, 1], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[1]
     )
     plot_recordable(
-        axs[7, 1], events_mm_out, "error_signal", r"$y_k-y^*_k$\n", xlims_list[1]
+        axs[6, 1], events_mm_out, "readout_signal", r"$y_k$", xlims_list[1]
+    )
+    plot_recordable(
+        axs[7, 1], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[1]
     )
     # Set labels and titles
     axs[0, 0].set_title("Pre-training window")
