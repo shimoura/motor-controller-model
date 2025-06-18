@@ -357,6 +357,7 @@ def run_simulation(
     )
     params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
 
+    # Define the parameters for the feedback connections from readout neurons to recurrent neurons
     params_syn_feedback = {
         "synapse_model": "eprop_learning_signal_connection_bsshslm_2020",
         "delay": duration["step"],
@@ -365,12 +366,14 @@ def run_simulation(
         ),
     }
 
+    # Define the parameters for the target signal connections to readout neurons
     params_syn_rate_target = {
         "synapse_model": "rate_connection_delayed",
         "delay": duration["step"],
         "receptor_type": 2,  # receptor type over which readout neurons receive target signals
     }
 
+    # Define the parameters for the static synapses used for recording
     params_syn_static = {
         "synapse_model": "static_synapse",
         "delay": duration["step"],
