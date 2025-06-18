@@ -55,21 +55,28 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
     plt.close()
 
 
-def plot_training_error(loss, n_iter, n_samples, n_batch, out_path):
+def plot_training_error(loss, out_path, x=None, xlabel="training iteration"):
     """
     Plot the training error (loss curve) for a single simulation run.
     Args:
         loss: Array of loss values per iteration
-        n_iter: Number of training iterations
-        n_samples: Number of samples per batch
-        n_batch: Number of batches
         out_path: Path to save the figure
+        x: Optional x-axis values (default: range(1, len(loss)+1))
+        xlabel: Label for the x-axis (default: "training iteration")
     """
+    loss = np.asarray(loss)
+    if x is None:
+        x = np.arange(1, len(loss) + 1)
+    else:
+        x = np.asarray(x)
+        minlen = min(len(x), len(loss))
+        x = x[:minlen]
+        loss = loss[:minlen]
     fig, ax = plt.subplots()
-    ax.plot(range(1, n_iter * n_samples * n_batch + 1), loss)
+    ax.plot(x, loss)
     ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} (y_k^t -y_k^{*,t})^2$")
-    ax.set_xlabel("training iteration")
-    ax.set_xlim(1, n_iter * n_samples * n_batch)
+    ax.set_xlabel(xlabel)
+    ax.set_xlim(x[0], x[-1])
     ax.xaxis.get_major_locator().set_params(integer=True)
     fig.tight_layout()
     fig.savefig(out_path)

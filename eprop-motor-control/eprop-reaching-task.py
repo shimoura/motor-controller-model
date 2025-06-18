@@ -162,11 +162,13 @@ def run_simulation(
 
     # Compute all timing values directly in milliseconds
     step_ms = sim_cfg["step"]
+    n_timesteps_per_sequence = int(round(task_cfg["sequence"] / step_ms))
     duration = {
         "step": step_ms,
         "sequence": task_cfg["sequence"],
         "learning_window": task_cfg["sequence"],
-        "task": n_samples * n_iter * n_batch * task_cfg["sequence"],
+        # Ensure task duration matches integer number of time steps
+        "task": n_timesteps_per_sequence * n_samples * n_iter * n_batch * step_ms,
         "offset_gen": task_cfg["offset_gen"] * step_ms,
         "delay_in_rec": task_cfg["delay_in_rec"] * step_ms,
         "delay_rec_out": task_cfg["delay_rec_out"] * step_ms,
@@ -182,6 +184,9 @@ def run_simulation(
     duration["sim"] = (
         duration["task"] + duration["total_offset"] + duration["extension_sim"]
     )
+
+    # Calculate number of time steps per sequence
+    n_timesteps_per_sequence = int(duration["sequence"] / duration["step"])
 
     # Set up simulation
     params_setup = {
@@ -248,6 +253,11 @@ def run_simulation(
     # recorders, the recorded variables, neurons, and synapses can be limited to the ones relevant to the
     # experiment, and the recording interval can be increased (see the documentation on the specific recorders). By
     # default, recordings are stored in memory but can also be written to file.
+
+    # Helper to round down to nearest multiple of step
+    def floor_to_step(val, step):
+        # Ensure both val and step are floats for division, then cast to int after rounding
+        return int(np.round(val / step) * step)
 
     # Recording parameters from config
     n_record = config["recording"]["n_record"]
@@ -493,23 +503,32 @@ def run_simulation(
         trajectory_file = dataset_path.parent / f"trajectory{trajectory_num}.txt"
         trajectory_data = np.loadtxt(trajectory_file)  # load the trajectory data
 
-        # Resample trajectory data to match the code resolution of 1.0 ms
-        trajectory_data = trajectory_data[::int(duration["step"] / trajectory_original_resolution)]
+        # Resample trajectory data to match the number of time steps per sequence
+        # Calculate the number of points to sample
+        original_num_points = len(trajectory_data)
+        original_duration = original_num_points * trajectory_original_resolution
+        # Generate new time points for resampling
+        resampled_time = np.linspace(
+            0, original_duration, n_timesteps_per_sequence, endpoint=False
+        )
+        original_time = np.arange(original_num_points) * trajectory_original_resolution
+        # Interpolate to get resampled trajectory
+        trajectory_data_resampled = np.interp(resampled_time, original_time, trajectory_data)
 
         # Store the trajectory data
-        trajectories.append(trajectory_data)
+        trajectories.append(trajectory_data_resampled)
 
-        # Counts the number of output spikes per time step
+        # Counts the number of output spikes per time step (bin edges must match n_timesteps_per_sequence)
         desired_targets = {
             "pos": np.histogram(
                 time_pos,
-                bins=int(duration["sequence"]/ duration["step"]),
-                range=(0, int(duration["sequence"]/ duration["step"])),
+                bins=n_timesteps_per_sequence,
+                range=(0, duration["sequence"]),
             )[0],
             "neg": np.histogram(
                 time_neg,
-                bins=int(duration["sequence"]/ duration["step"]),
-                range=(0, int(duration["sequence"]/ duration["step"])),
+                bins=n_timesteps_per_sequence,
+                range=(0, duration["sequence"]),
             )[0],
         }
 
@@ -528,6 +547,8 @@ def run_simulation(
     # Get the length of the trajectory sample for later use
     trajectory_sample = trajectories[0]
     length_trajectory_sample = len(trajectory_sample)
+    # Ensure this matches n_timesteps_per_sequence
+    assert length_trajectory_sample == n_timesteps_per_sequence
 
     # %% ###########################################################################################################
     # Create input
@@ -540,7 +561,7 @@ def run_simulation(
     # Prepare RBF inputs for all samples (trajectories)
     rbf_inputs_list = []
     for trajectory_sample in trajectories:
-        rbf_inputs = np.zeros((len(trajectory_sample), num_centers))
+        rbf_inputs = np.zeros((n_timesteps_per_sequence, num_centers))
         for i, center in enumerate(centers):
             rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
         rbf_inputs_list.append(rbf_inputs)
@@ -549,14 +570,16 @@ def run_simulation(
         np.vstack(rbf_inputs_list) * scale_rate
     )  # Combine all trajectories
 
-    # Use trajectory_sample length to determine the number of time steps
-    in_rate_times = np.arange(length_trajectory_sample * n_iter * n_batch) * duration["step"] + duration["offset_gen"]
+    # Use n_timesteps_per_sequence to determine the number of time steps
+    in_rate_times = (
+        np.arange(n_timesteps_per_sequence * n_iter * n_batch) * duration["step"] + duration["offset_gen"]
+    )
 
     # Create Poisson generator parameters
     params_gen_poisson_in = [
         {
             "rate_times": in_rate_times,
-            "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter),
+            "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter * n_batch),
         }
         for n_center in range(num_centers)
     ]
@@ -568,28 +591,24 @@ def run_simulation(
     # Create output
     # ~~~~~~~~~~~~~
 
-    # The desired target signal is the output data sent by the collaborators (Alberto, Claudia)
-
     # Concatenate the desired targets in desired_targets_list
     concatenated_desired_targets = {
         "pos": np.concatenate(desired_targets_list["pos"]),
         "neg": np.concatenate(desired_targets_list["neg"]),
     }
 
-    params_gen_rate_target = []
-
+    # The length of the target sample should match n_timesteps_per_sequence * n_batch * n_samples
     length_target_sample = len(concatenated_desired_targets["pos"])
-    target_amp_times = np.arange(
-        length_target_sample * n_iter * n_batch
-    ) * duration["step"] + duration["offset_gen"]
-    print(len(concatenated_desired_targets['pos']))
+    assert length_target_sample == n_timesteps_per_sequence * n_batch * n_samples
+
+    target_amp_times = (
+        np.arange(length_target_sample * n_iter) * duration["step"] + duration["offset_gen"]
+    )
 
     params_gen_rate_target = [
         {
             "amplitude_times": target_amp_times,
-            "amplitude_values": np.tile(
-                concatenated_desired_targets[key] * 1e1, n_iter
-            ),
+            "amplitude_values": np.tile(concatenated_desired_targets[key] * 1e1, n_iter),
         }
         for key in concatenated_desired_targets.keys()
     ]
@@ -692,7 +711,7 @@ def run_simulation(
         # Use scenario-specific directory for output files
         out_dir = result_dir if result_dir else "."
         plot_training_error(
-            loss, n_iter, n_samples, n_batch, os.path.join(out_dir, "training_error.png")
+            loss, os.path.join(out_dir, "training_error.png")
         )
         plot_spikes_and_dynamics(
             events_sr,
