@@ -82,7 +82,7 @@ synapses:
 # Recording parameters
 recording:
   n_record: 2  # Number of neurons to record
-  n_record_w: 3  # Number of weights to record
+  n_record_w: 5  # Number of weights to record
   mm_rec:
     interval: 1.0  # Recording interval (ms)
     record_from: [V_m, surrogate_gradient, learning_signal]  # Variables to record from recurrent neurons

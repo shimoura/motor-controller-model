@@ -99,90 +99,87 @@ def plot_spikes_and_dynamics(
         out_prefix: Prefix for output files
     """
 
-    def plot_recordable(ax, events, recordable, ylabel, xlims):
-        for sender in set(events["senders"]):
+    def plot_recordable(ax, events, recordable, ylabel, xlims, color_cycle=None):
+        senders = np.unique(events["senders"])
+        for idx, sender in enumerate(senders):
             idc_sender = events["senders"] == sender
             idc_times = (events["times"][idc_sender] > xlims[0]) & (
                 events["times"][idc_sender] < xlims[1]
             )
-            ax.plot(
-                events["times"][idc_sender][idc_times],
-                events[recordable][idc_sender][idc_times],
-                lw=1.5,
-            )
+            if np.any(idc_times):
+                color = color_cycle[idx % len(color_cycle)] if color_cycle else None
+                ax.plot(
+                    events["times"][idc_sender][idc_times],
+                    events[recordable][idc_sender][idc_times],
+                    lw=1.5,
+                    color=color,
+                    alpha=0.8,
+                )
         ax.set_ylabel(ylabel)
+        ax.grid(True, linestyle="--", alpha=0.3)
 
-    def plot_spikes(ax, events, nrns, ylabel, xlims):
+    def plot_spikes(ax, events, nrns, ylabel, xlims, color="black"):
         idc_times = (events["times"] > xlims[0]) & (events["times"] < xlims[1])
         idc_sender = np.isin(events["senders"][idc_times], nrns.tolist())
         senders_subset = events["senders"][idc_times][idc_sender]
         times_subset = events["times"][idc_times][idc_sender]
-        ax.scatter(times_subset, senders_subset, s=0.1)
-        ax.set_ylabel(ylabel)
         if senders_subset.size > 0:
-            margin = np.abs(np.max(senders_subset) - np.min(senders_subset)) * 0.1
+            ax.scatter(times_subset, senders_subset, s=2, color=color, alpha=0.7)
+            margin = np.abs(np.max(senders_subset) - np.min(senders_subset)) * 0.1 + 1
             ax.set_ylim(
                 np.min(senders_subset) - margin, np.max(senders_subset) + margin
             )
         else:
             ax.set_ylim(0, 1)
+        ax.set_ylabel(ylabel)
+        ax.grid(True, linestyle="--", alpha=0.3)
 
     # Define the two time windows: pre- and post-training
     xlims_list = [
         (0, duration["sequence"]),
         (duration["task"] - duration["sequence"], duration["task"]),
     ]
-    fig, axs = plt.subplots(8, 2, sharex="col", figsize=(8, 12))
+    fig, axs = plt.subplots(8, 2, sharex="col", figsize=(10, 14), dpi=120)
+
+    # Color cycles for better distinction
+    rec_colors = [colors.get("blue", "#1f77b4"), colors.get("red", "#d62728"), colors.get("green", "#2ca02c"), colors.get("orange", "#ff7f0e")]
+    out_colors = [colors.get("blue", "#1f77b4"), colors.get("red", "#d62728"), colors.get("pink", "#e377c2")]
+
     # Left column: pre-training window
-    plot_spikes(axs[0, 0], events_sr, nrns_rec, r"$z_j$", xlims_list[0])
-    plot_recordable(axs[1, 0], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[0])
-    plot_recordable(
-        axs[2, 0], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[0]
-    )
-    plot_recordable(
-        axs[3, 0], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[0]
-    )
-    plot_recordable(axs[4, 0], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[0])
-    plot_recordable(
-        axs[5, 0], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[0]
-    )
-    plot_recordable(
-        axs[6, 0], events_mm_out, "readout_signal", r"$y_k$", xlims_list[0]
-    )
-    plot_recordable(
-        axs[7, 0], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[0]
-    )
+    plot_spikes(axs[0, 0], events_sr, nrns_rec, r"$z_j$", xlims_list[0], color=colors.get("black", "black"))
+    plot_recordable(axs[1, 0], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[0], rec_colors)
+    plot_recordable(axs[2, 0], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[0], rec_colors)
+    plot_recordable(axs[3, 0], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[0], rec_colors)
+    plot_recordable(axs[4, 0], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[0], out_colors)
+    plot_recordable(axs[5, 0], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[0], out_colors)
+    plot_recordable(axs[6, 0], events_mm_out, "readout_signal", r"$y_k$", xlims_list[0], out_colors)
+    plot_recordable(axs[7, 0], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[0], out_colors)
+
     # Right column: post-training window
-    plot_spikes(axs[0, 1], events_sr, nrns_rec, r"$z_j$", xlims_list[1])
-    plot_recordable(axs[1, 1], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[1])
-    plot_recordable(
-        axs[2, 1], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[1]
-    )
-    plot_recordable(
-        axs[3, 1], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[1]
-    )
-    plot_recordable(axs[4, 1], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[1])
-    plot_recordable(
-        axs[5, 1], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[1]
-    )
-    plot_recordable(
-        axs[6, 1], events_mm_out, "readout_signal", r"$y_k$", xlims_list[1]
-    )
-    plot_recordable(
-        axs[7, 1], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[1]
-    )
+    plot_spikes(axs[0, 1], events_sr, nrns_rec, r"$z_j$", xlims_list[1], color=colors.get("black", "black"))
+    plot_recordable(axs[1, 1], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[1], rec_colors)
+    plot_recordable(axs[2, 1], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[1], rec_colors)
+    plot_recordable(axs[3, 1], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[1], rec_colors)
+    plot_recordable(axs[4, 1], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[1], out_colors)
+    plot_recordable(axs[5, 1], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[1], out_colors)
+    plot_recordable(axs[6, 1], events_mm_out, "readout_signal", r"$y_k$", xlims_list[1], out_colors)
+    plot_recordable(axs[7, 1], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[1], out_colors)
+
     # Set labels and titles
-    axs[0, 0].set_title("Pre-training window")
-    axs[0, 1].set_title("Post-training window")
+    axs[0, 0].set_title("Pre-training window", fontsize=12, fontweight="bold")
+    axs[0, 1].set_title("Post-training window", fontsize=12, fontweight="bold")
     for i in range(8):
         axs[i, 0].label_outer()
         axs[i, 1].label_outer()
+        axs[i, 0].tick_params(axis='both', which='major', labelsize=8)
+        axs[i, 1].tick_params(axis='both', which='major', labelsize=8)
     axs[-1, 0].set_xlabel(r"$t$ (ms)")
     axs[-1, 1].set_xlabel(r"$t$ (ms)")
     axs[-1, 0].set_xlim(*xlims_list[0])
     axs[-1, 1].set_xlim(*xlims_list[1])
     fig.align_ylabels()
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.98])
+    fig.suptitle("Spikes and Dynamics (Pre- and Post-Training)", fontsize=14, fontweight="bold", y=0.995)
     fig.savefig(f"{out_prefix}", dpi=300)
     plt.close(fig)
 

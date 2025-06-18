@@ -60,6 +60,9 @@ References
 # ~~~~~~~~~~~~~~~~
 # We begin by importing all libraries required for the simulation, analysis, and visualization.
 
+import matplotlib
+matplotlib.use("Agg")
+
 import nest
 import copy
 import numpy as np
@@ -863,4 +866,4 @@ if __name__ == "__main__":
         scenarios.append("default")
 
     # Plot and compare all loss curves from the results directory
-    plot_all_loss_curves(results_dir)
+    plot_all_loss_curves(results_dir, showfig=False)
