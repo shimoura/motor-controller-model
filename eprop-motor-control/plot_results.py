@@ -149,28 +149,109 @@ def plot_spikes_and_dynamics(
     fig, axs = plt.subplots(8, 2, sharex="col", figsize=(10, 14), dpi=120)
 
     # Color cycles for better distinction
-    rec_colors = [colors.get("blue", "#1f77b4"), colors.get("red", "#d62728"), colors.get("green", "#2ca02c"), colors.get("orange", "#ff7f0e")]
-    out_colors = [colors.get("blue", "#1f77b4"), colors.get("red", "#d62728"), colors.get("pink", "#e377c2")]
+    rec_colors = [
+        colors.get("blue", "#1f77b4"),
+        colors.get("red", "#d62728"),
+        colors.get("green", "#2ca02c"),
+        colors.get("orange", "#ff7f0e"),
+    ]
+    out_colors = [
+        colors.get("blue", "#1f77b4"),
+        colors.get("red", "#d62728"),
+        colors.get("pink", "#e377c2"),
+    ]
 
     # Left column: pre-training window
-    plot_spikes(axs[0, 0], events_sr, nrns_rec, r"$z_j$", xlims_list[0], color=colors.get("black", "black"))
-    plot_recordable(axs[1, 0], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[0], rec_colors)
-    plot_recordable(axs[2, 0], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[0], rec_colors)
-    plot_recordable(axs[3, 0], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[0], rec_colors)
-    plot_recordable(axs[4, 0], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[0], out_colors)
-    plot_recordable(axs[5, 0], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[0], out_colors)
-    plot_recordable(axs[6, 0], events_mm_out, "readout_signal", r"$y_k$", xlims_list[0], out_colors)
-    plot_recordable(axs[7, 0], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[0], out_colors)
+    plot_spikes(
+        axs[0, 0],
+        events_sr,
+        nrns_rec,
+        r"$z_j$",
+        xlims_list[0],
+        color=colors.get("black", "black"),
+    )
+    plot_recordable(
+        axs[1, 0], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[0], rec_colors
+    )
+    plot_recordable(
+        axs[2, 0],
+        events_mm_rec,
+        "surrogate_gradient",
+        r"$\psi_j$",
+        xlims_list[0],
+        rec_colors,
+    )
+    plot_recordable(
+        axs[3, 0],
+        events_mm_rec,
+        "learning_signal",
+        r"$L_j$ (pA)",
+        xlims_list[0],
+        rec_colors,
+    )
+    plot_recordable(
+        axs[4, 0], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[0], out_colors
+    )
+    plot_recordable(
+        axs[5, 0], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[0], out_colors
+    )
+    plot_recordable(
+        axs[6, 0], events_mm_out, "readout_signal", r"$y_k$", xlims_list[0], out_colors
+    )
+    plot_recordable(
+        axs[7, 0],
+        events_mm_out,
+        "error_signal",
+        r"$y_k-y^*_k$",
+        xlims_list[0],
+        out_colors,
+    )
 
     # Right column: post-training window
-    plot_spikes(axs[0, 1], events_sr, nrns_rec, r"$z_j$", xlims_list[1], color=colors.get("black", "black"))
-    plot_recordable(axs[1, 1], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[1], rec_colors)
-    plot_recordable(axs[2, 1], events_mm_rec, "surrogate_gradient", r"$\psi_j$", xlims_list[1], rec_colors)
-    plot_recordable(axs[3, 1], events_mm_rec, "learning_signal", r"$L_j$ (pA)", xlims_list[1], rec_colors)
-    plot_recordable(axs[4, 1], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[1], out_colors)
-    plot_recordable(axs[5, 1], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[1], out_colors)
-    plot_recordable(axs[6, 1], events_mm_out, "readout_signal", r"$y_k$", xlims_list[1], out_colors)
-    plot_recordable(axs[7, 1], events_mm_out, "error_signal", r"$y_k-y^*_k$", xlims_list[1], out_colors)
+    plot_spikes(
+        axs[0, 1],
+        events_sr,
+        nrns_rec,
+        r"$z_j$",
+        xlims_list[1],
+        color=colors.get("black", "black"),
+    )
+    plot_recordable(
+        axs[1, 1], events_mm_rec, "V_m", r"$v_j$ (mV)", xlims_list[1], rec_colors
+    )
+    plot_recordable(
+        axs[2, 1],
+        events_mm_rec,
+        "surrogate_gradient",
+        r"$\psi_j$",
+        xlims_list[1],
+        rec_colors,
+    )
+    plot_recordable(
+        axs[3, 1],
+        events_mm_rec,
+        "learning_signal",
+        r"$L_j$ (pA)",
+        xlims_list[1],
+        rec_colors,
+    )
+    plot_recordable(
+        axs[4, 1], events_mm_out, "V_m", r"$v_k$ (mV)", xlims_list[1], out_colors
+    )
+    plot_recordable(
+        axs[5, 1], events_mm_out, "target_signal", r"$y^*_k$", xlims_list[1], out_colors
+    )
+    plot_recordable(
+        axs[6, 1], events_mm_out, "readout_signal", r"$y_k$", xlims_list[1], out_colors
+    )
+    plot_recordable(
+        axs[7, 1],
+        events_mm_out,
+        "error_signal",
+        r"$y_k-y^*_k$",
+        xlims_list[1],
+        out_colors,
+    )
 
     # Set labels and titles
     axs[0, 0].set_title("Pre-training window", fontsize=12, fontweight="bold")
@@ -178,15 +259,20 @@ def plot_spikes_and_dynamics(
     for i in range(8):
         axs[i, 0].label_outer()
         axs[i, 1].label_outer()
-        axs[i, 0].tick_params(axis='both', which='major', labelsize=8)
-        axs[i, 1].tick_params(axis='both', which='major', labelsize=8)
+        axs[i, 0].tick_params(axis="both", which="major", labelsize=8)
+        axs[i, 1].tick_params(axis="both", which="major", labelsize=8)
     axs[-1, 0].set_xlabel(r"$t$ (ms)")
     axs[-1, 1].set_xlabel(r"$t$ (ms)")
     axs[-1, 0].set_xlim(*xlims_list[0])
     axs[-1, 1].set_xlim(*xlims_list[1])
     fig.align_ylabels()
     fig.tight_layout(rect=[0, 0, 1, 0.98])
-    fig.suptitle("Spikes and Dynamics (Pre- and Post-Training)", fontsize=14, fontweight="bold", y=0.995)
+    fig.suptitle(
+        "Spikes and Dynamics (Pre- and Post-Training)",
+        fontsize=14,
+        fontweight="bold",
+        y=0.995,
+    )
     fig.savefig(f"{out_prefix}", dpi=300)
     plt.close(fig)
 

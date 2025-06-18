@@ -61,6 +61,7 @@ References
 # We begin by importing all libraries required for the simulation, analysis, and visualization.
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import nest
@@ -209,7 +210,9 @@ def run_simulation(
     # ~~~~~~~~~~~~~~~~~~~~~
 
     # RBF parameters from config
-    num_centers = int(config["rbf"]["num_centers"])  # Ensure integer for np.linspace and indexing
+    num_centers = int(
+        config["rbf"]["num_centers"]
+    )  # Ensure integer for np.linspace and indexing
     centers = np.linspace(0.0, np.pi / 2.0, num_centers)
     width = config["rbf"]["width"]
     scale_rate = config["rbf"]["scale_rate"]
@@ -419,14 +422,18 @@ def run_simulation(
             # Connect to a proportion of excitatory neurons
             nest.Connect(
                 poisson_node,
-                nrns_rec_exc[int(i * n_rec_exc / n_in) : int((i + 1) * n_rec_exc / n_in)],
+                nrns_rec_exc[
+                    int(i * n_rec_exc / n_in) : int((i + 1) * n_rec_exc / n_in)
+                ],
                 params_conn_all_to_all,
                 params_syn_input,
             )
             # Connect to a proportion of inhibitory neurons
             nest.Connect(
                 poisson_node,
-                nrns_rec_inh[int(i * n_rec_inh / n_in) : int((i + 1) * n_rec_inh / n_in)],
+                nrns_rec_inh[
+                    int(i * n_rec_inh / n_in) : int((i + 1) * n_rec_inh / n_in)
+                ],
                 params_conn_all_to_all,
                 params_syn_input,
             )
@@ -488,7 +495,9 @@ def run_simulation(
         sample_ids.extend(range(start_index, start_index + n_samples))
 
     trajectories = []
-    trajectory_original_resolution = 0.1 # Original resolution of the trajectory data in ms
+    trajectory_original_resolution = (
+        0.1  # Original resolution of the trajectory data in ms
+    )
     desired_targets_list = {"pos": [], "neg": []}
 
     # Iterate over the sample IDs and load the corresponding data
@@ -513,7 +522,9 @@ def run_simulation(
         )
         original_time = np.arange(original_num_points) * trajectory_original_resolution
         # Interpolate to get resampled trajectory
-        trajectory_data_resampled = np.interp(resampled_time, original_time, trajectory_data)
+        trajectory_data_resampled = np.interp(
+            resampled_time, original_time, trajectory_data
+        )
 
         # Store the trajectory data
         trajectories.append(trajectory_data_resampled)
@@ -566,25 +577,30 @@ def run_simulation(
             rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
         rbf_inputs_list.append(rbf_inputs)
 
-    rate_based_rbf_inputs = (
-        np.vstack(rbf_inputs_list) * scale_rate
-    )  # Combine all trajectories
+    # Stack all RBF inputs: shape = (n_batch * n_samples * n_timesteps_per_sequence, num_centers)
+    rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * scale_rate
 
-    # Use n_timesteps_per_sequence to determine the number of time steps
+    # Calculate total number of input time steps
+    total_input_steps = n_timesteps_per_sequence * n_batch * n_samples * n_iter
+
+    # Time vector for input rates
     in_rate_times = (
-        np.arange(n_timesteps_per_sequence * n_iter * n_batch) * duration["step"] + duration["offset_gen"]
+        np.arange(total_input_steps) * duration["step"] + duration["offset_gen"]
     )
 
-    # Create Poisson generator parameters
+    # Tile the RBF input for all iterations
+    tiled_rbf_inputs = np.tile(
+        rate_based_rbf_inputs, (n_iter, 1)
+    )  # shape: (total_input_steps, num_centers)
+
     params_gen_poisson_in = [
         {
             "rate_times": in_rate_times,
-            "rate_values": np.tile(rate_based_rbf_inputs[:, n_center], n_iter * n_batch),
+            "rate_values": tiled_rbf_inputs[:, n_center],
         }
         for n_center in range(num_centers)
     ]
 
-    # Assign the parameters to the Poisson generators
     nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
 
     # %% ###########################################################################################################
@@ -602,13 +618,16 @@ def run_simulation(
     assert length_target_sample == n_timesteps_per_sequence * n_batch * n_samples
 
     target_amp_times = (
-        np.arange(length_target_sample * n_iter) * duration["step"] + duration["offset_gen"]
+        np.arange(length_target_sample * n_iter) * duration["step"]
+        + duration["offset_gen"]
     )
 
     params_gen_rate_target = [
         {
             "amplitude_times": target_amp_times,
-            "amplitude_values": np.tile(concatenated_desired_targets[key] * 1e1, n_iter),
+            "amplitude_values": np.tile(
+                concatenated_desired_targets[key] * 1e1, n_iter
+            ),
         }
         for key in concatenated_desired_targets.keys()
     ]
@@ -710,9 +729,7 @@ def run_simulation(
     if plot_results and do_plotting:
         # Use scenario-specific directory for output files
         out_dir = result_dir if result_dir else "."
-        plot_training_error(
-            loss, os.path.join(out_dir, "training_error.png")
-        )
+        plot_training_error(loss, os.path.join(out_dir, "training_error.png"))
         plot_spikes_and_dynamics(
             events_sr,
             events_mm_rec,
