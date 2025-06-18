@@ -18,17 +18,17 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
         metric_fn = lambda loss: loss[-1]  # Default: final loss
 
     metrics = []
-    # Recursively find all *_results.npz files
-    npz_files = glob.glob(os.path.join(results_dir, '**', '*_results.npz'), recursive=True)
+    # Recursively find all *results.npz files
+    npz_files = glob.glob(os.path.join(results_dir, '**', '*results.npz'), recursive=True)
     for fpath in npz_files:
         data = np.load(fpath)
         loss = data['loss']
         metric = metric_fn(loss)
-        label = os.path.relpath(fpath, results_dir).replace('_results.npz', '')
+        label = os.path.relpath(fpath, results_dir).replace('results.npz', '')
         metrics.append((label, metric, loss))
 
     if not metrics:
-        print("No *_results.npz files found in", results_dir)
+        print("No *results.npz files found in", results_dir)
         return
 
     metrics.sort(key=lambda x: x[1])
@@ -141,7 +141,7 @@ def plot_spikes_and_dynamics(events_sr, events_mm_rec, events_mm_out, nrns_rec, 
     axs[-1,1].set_xlim(*xlims_list[1])
     fig.align_ylabels()
     fig.tight_layout()
-    fig.savefig(f"{out_prefix}_spikes_and_dynamic_variables_side_by_side.png", dpi=300)
+    fig.savefig(f"{out_prefix}", dpi=300)
     plt.close(fig)
 
 def plot_weight_time_courses(events_wr, weights_pre_train, nrns_rec, nrns_out, n_record_w, colors, duration, out_path):

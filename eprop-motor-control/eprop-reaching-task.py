@@ -88,8 +88,9 @@ def run_simulation(
     learning_rate_inh=None,
     exc_ratio=None,
     config_path_override=None,
-    result_prefix=None,
+    result_dir=None,
     plot_results=True,
+    plastic_input_to_rec=False,  # <-- new option
     **override_kwargs,
 ):
     """
@@ -101,7 +102,7 @@ def run_simulation(
         learning_rate_inh: Learning rate for inhibitory synapses (float)
         exc_ratio: Ratio of excitatory neurons (float)
         config_path_override: Path to config file (str or Path)
-        result_prefix: Prefix for result files (str)
+        result_dir: Directory for result files (str)
         plot_results: Whether to plot results (bool)
         override_kwargs: Other config overrides (dict)
     """
@@ -389,21 +390,30 @@ def run_simulation(
     )
 
     # Connect each Poisson generator to a proportion of the excitatory and inhibitory populations
-    for i, poisson_node in enumerate(gen_poisson_in):
-        # Connect to a proportion of excitatory neurons
+    if plastic_input_to_rec:
+        # Fully connect all input neurons to all recurrent neurons with plastic synapses
         nest.Connect(
-            poisson_node,
-            nrns_rec_exc[int(i * n_rec_exc / n_in) : int((i + 1) * n_rec_exc / n_in)],
+            gen_poisson_in,
+            nrns_rec,
             params_conn_all_to_all,
-            params_syn_input,
+            params_syn_rec_exc,
         )
-        # Connect to a proportion of inhibitory neurons
-        nest.Connect(
-            poisson_node,
-            nrns_rec_inh[int(i * n_rec_inh / n_in) : int((i + 1) * n_rec_inh / n_in)],
-            params_conn_all_to_all,
-            params_syn_input,
-        )
+    else:
+        for i, poisson_node in enumerate(gen_poisson_in):
+            # Connect to a proportion of excitatory neurons
+            nest.Connect(
+                poisson_node,
+                nrns_rec_exc[int(i * n_rec_exc / n_in) : int((i + 1) * n_rec_exc / n_in)],
+                params_conn_all_to_all,
+                params_syn_input,
+            )
+            # Connect to a proportion of inhibitory neurons
+            nest.Connect(
+                poisson_node,
+                nrns_rec_inh[int(i * n_rec_inh / n_in) : int((i + 1) * n_rec_inh / n_in)],
+                params_conn_all_to_all,
+                params_syn_input,
+            )
 
     # Connect recurrent neurons to themselves
     nest.Connect(
@@ -661,10 +671,10 @@ def run_simulation(
     do_plotting = plotting_cfg.get("do_plotting", True)
 
     if plot_results and do_plotting:
-        # Use scenario-specific prefix for output files
-        prefix = result_prefix if result_prefix else "result"
+        # Use scenario-specific directory for output files
+        out_dir = result_dir if result_dir else "."
         plot_training_error(
-            loss, n_iter, n_samples, n_batch, f"{prefix}_training_error.png"
+            loss, n_iter, n_samples, n_batch, os.path.join(out_dir, "training_error.png")
         )
         plot_spikes_and_dynamics(
             events_sr,
@@ -674,7 +684,7 @@ def run_simulation(
             n_record,
             duration,
             colors,
-            prefix,
+            os.path.join(out_dir, "spikes_and_dynamics.png"),
         )
         plot_weight_time_courses(
             events_wr,
@@ -684,17 +694,17 @@ def run_simulation(
             n_record_w,
             colors,
             duration,
-            f"{prefix}_weight_time_courses.png",
+            os.path.join(out_dir, "weight_time_courses.png"),
         )
         plot_weight_matrices(
             weights_pre_train,
             weights_post_train,
             colors,
-            f"{prefix}_weight_matrices.png",
+            os.path.join(out_dir, "weight_matrices.png"),
         )
 
         # Save loss, full config, weights, and signals for later comparison
-        if result_prefix:
+        if result_dir:
             import json
 
             def make_json_serializable(obj):
@@ -709,14 +719,14 @@ def run_simulation(
 
             config_serializable = make_json_serializable(config)
             np.savez(
-                f"{result_prefix}_results.npz",
+                os.path.join(out_dir, "results.npz"),
                 loss=loss,
                 weights_pre_train=make_json_serializable(weights_pre_train),
                 weights_post_train=make_json_serializable(weights_post_train),
                 readout_signal=readout_signal,
                 target_signal=target_signal,
             )
-            with open(f"{result_prefix}_config.json", "w") as f:
+            with open(os.path.join(out_dir, "config.json"), "w") as f:
                 json.dump(config_serializable, f, indent=2)
 
 
@@ -747,7 +757,7 @@ os.makedirs(results_dir, exist_ok=True)
 #
 # 4. Use --learning-rate to set both rates and scan RBF centers and neurons:
 #    python eprop-reaching-task.py --scan-param rbf.num_centers,neurons.n_rec \
-#        --scan-values "10,20;100,200" --learning-rate 0.001
+#        --scan-values "10,20;100,200" --learning_rate 0.001
 #
 # 5. Scan a single parameter:
 #    python eprop-reaching-task.py --scan-param learning_rate_exc --scan-values 0.001,0.01,0.1
@@ -755,6 +765,9 @@ os.makedirs(results_dir, exist_ok=True)
 # 6. Scan multiple parameters (grid search):
 #    python eprop-reaching-task.py --scan-param learning_rate_exc,neurons.n_rec --scan-values "0.001,0.01;100,200"
 #    # This will run all combinations of the provided values.
+#
+# 7. Make input-to-recurrent connections plastic and fully connected:
+#    python eprop-reaching-task.py --plastic-input-to-rec
 #
 # - Separate parameter names with commas, and value lists with semicolons.
 # - All parameter names must match the config structure (e.g., neurons.n_rec, rbf.num_centers).
@@ -787,6 +800,11 @@ if __name__ == "__main__":
         help="Set both exc and inh learning rates simultaneously",
     )
     parser.add_argument("--no-plot", action="store_true", help="Disable plotting")
+    parser.add_argument(
+        "--plastic-input-to-rec",
+        action="store_true",
+        help="Make input-to-recurrent connections plastic and fully connected",
+    )
     args = parser.parse_args()
 
     # Prepare parameter names and values for grid search
@@ -818,11 +836,11 @@ if __name__ == "__main__":
             sim_dir = os.path.join(results_dir, folder_name)
             os.makedirs(sim_dir, exist_ok=True)
             print(f"Running scenario: {param_dict}")
-            # Run simulation for each parameter combination and save results in a dedicated folder
             run_simulation(
                 **param_dict,
-                result_prefix=os.path.join(sim_dir, "result"),
+                result_dir=sim_dir,
                 plot_results=plot_results_flag,
+                plastic_input_to_rec=args.plastic_input_to_rec,
             )
             scenarios.append(folder_name)
     else:
@@ -834,8 +852,9 @@ if __name__ == "__main__":
         sim_dir = os.path.join(results_dir, "default")
         os.makedirs(sim_dir, exist_ok=True)
         run_simulation(
-            result_prefix=os.path.join(sim_dir, "result"),
+            result_dir=sim_dir,
             plot_results=plot_results_flag,
+            plastic_input_to_rec=args.plastic_input_to_rec,
             **param_dict,
         )
         scenarios.append("default")
