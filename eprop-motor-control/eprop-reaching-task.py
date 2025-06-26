@@ -157,9 +157,9 @@ def run_simulation(
     sim_cfg = config["simulation"]
     task_cfg = config["task"]
 
-    n_batch = task_cfg["n_batch"]
-    n_iter = task_cfg["n_iter"]
-    n_samples = task_cfg["n_samples"]
+    n_batch = int(task_cfg["n_batch"])
+    n_iter = int(task_cfg["n_iter"])
+    n_samples = int(task_cfg["n_samples"])
 
     # Compute all timing values directly in milliseconds
     step_ms = sim_cfg["step"]
