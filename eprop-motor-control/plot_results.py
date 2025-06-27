@@ -17,8 +17,9 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
     import glob
 
     if metric_fn is None:
-        metric_fn = lambda loss: loss[-1]  # Default: final loss
-
+        # Use the second-to-last loss value to avoid the final artifact.
+        # Check len(loss) > 1 to prevent errors on very short/incomplete runs.
+        metric_fn = lambda loss: loss[-2] if len(loss) > 1 else loss[-1]
     metrics = []
     # Recursively find all *results.npz files
     npz_files = glob.glob(
@@ -43,7 +44,9 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
 
     plt.figure(figsize=(12, 8))
     for label, _, loss in metrics:
-        plt.plot(loss, label=label)
+        # Create an x-axis array and plot the loss array without its final element.
+        x_values = np.arange(1, len(loss))
+        plt.plot(x_values, loss[:-1], label=label)
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
     plt.title("All Loss Curves")

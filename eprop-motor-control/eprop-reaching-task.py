@@ -920,4 +920,4 @@ if __name__ == "__main__":
         scenarios.append(folder_name)
 
     # Plot and compare all loss curves from the results directory
-    # plot_all_loss_curves(results_dir, showfig=False)
+    plot_all_loss_curves(results_dir, showfig=False)
