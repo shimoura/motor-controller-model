@@ -25,7 +25,7 @@ rbf:
 
 # Neuron parameters
 neurons:
-  n_rec: 10  # Number of recurrent neurons
+  n_rec: 100  # Number of recurrent neurons
   n_out: 2  # Number of output neurons
   exc_ratio: 0.8  # Fraction of excitatory neurons in recurrent population
   rec:
@@ -53,7 +53,7 @@ neurons:
 # Synapse parameters
 synapses:
   w_input: 100.0  # Default synaptic weight (pA)
-  w_rec: 100.0  # Recurrent synaptic weight (pA)
+  w_rec: 10.0  # Recurrent synaptic weight (pA)
   g: 4.0  # Inhibitory/excitatory weight ratio
   conn_bernoulli_p: 0.1  # Connection probability for recurrent connections
   average_gradient: false  # Average gradient across batch (true/false)
