@@ -625,9 +625,7 @@ def run_simulation(
     params_gen_rate_target = [
         {
             "amplitude_times": target_amp_times,
-            "amplitude_values": np.tile(
-                concatenated_desired_targets[key], n_iter
-            ),
+            "amplitude_values": np.tile(concatenated_desired_targets[key], n_iter),
         }
         for key in concatenated_desired_targets.keys()
     ]
@@ -893,7 +891,9 @@ if __name__ == "__main__":
             folder_name += f"_plastic_input_to_rec_{args.plastic_input_to_rec}"
             sim_dir = os.path.join(results_dir, folder_name)
             os.makedirs(sim_dir, exist_ok=True)
-            print(f"Running scenario: {param_dict}, plastic_input_to_rec={args.plastic_input_to_rec}")
+            print(
+                f"Running scenario: {param_dict}, plastic_input_to_rec={args.plastic_input_to_rec}"
+            )
             run_simulation(
                 **param_dict,
                 result_dir=sim_dir,

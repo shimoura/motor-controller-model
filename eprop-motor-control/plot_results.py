@@ -5,21 +5,43 @@ import os
 from cycler import cycler
 
 
-def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True):
+def plot_all_loss_curves(
+    results_dir,
+    metric_fn=None,
+    savefig=True,
+    showfig=True,
+    avg_last_n=10,
+):
     """
     Plot all loss curves from *_results.npz files in the given directory and its subdirectories.
+
     Args:
-        results_dir: Directory containing subfolders with *_results.npz files
-        metric_fn: Function to extract a metric from the loss array (default: final loss)
-        savefig: Whether to save the figure as 'all_loss_curves.png' in results_dir
-        showfig: Whether to display the figure interactively
+        results_dir: Directory containing subfolders with *_results.npz files.
+        metric_fn: Function to extract a metric from the loss array (default: avg of last n).
+        savefig: Whether to save the figure as 'all_loss_curves.png' in results_dir.
+        showfig: Whether to display the figure interactively.
+        avg_last_n: Number of final iterations to average for the default metric.
     """
     import glob
+    import numpy as np
 
+    # If no custom metric function is provided, use a robust default metric.
     if metric_fn is None:
-        # Use the second-to-last loss value to avoid the final artifact.
-        # Check len(loss) > 1 to prevent errors on very short/incomplete runs.
-        metric_fn = lambda loss: loss[-2] if len(loss) > 1 else loss[-1]
+
+        def default_metric(loss):
+            # Handle cases where the simulation run was very short.
+            if len(loss) > avg_last_n:
+                # Ideal case: average over the last N valid iterations.
+                return np.mean(loss[-(avg_last_n + 1) : -1])
+            elif len(loss) > 1:
+                # Fallback for short runs: average all valid points.
+                return np.mean(loss[:-1])
+            else:
+                # Return infinity for invalid runs so they are ranked last.
+                return np.inf
+
+        metric_fn = default_metric
+
     metrics = []
     # Recursively find all *results.npz files
     npz_files = glob.glob(
@@ -36,7 +58,10 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
         print("No *results.npz files found in", results_dir)
         return
 
+    # The rest of the function remains the same, but is now more robust.
     metrics.sort(key=lambda x: x[1])
+
+    print(f"--- Results (ranked by average of last {avg_last_n} iterations) ---")
     print("Best scenario:", metrics[0][0], "with loss:", metrics[0][1])
     print("\nAll results:")
     for label, metric, _ in metrics:
@@ -44,9 +69,11 @@ def plot_all_loss_curves(results_dir, metric_fn=None, savefig=True, showfig=True
 
     plt.figure(figsize=(12, 8))
     for label, _, loss in metrics:
-        # Create an x-axis array and plot the loss array without its final element.
-        x_values = np.arange(1, len(loss))
-        plt.plot(x_values, loss[:-1], label=label)
+        # Plot all but the last point to avoid the artifact
+        if len(loss) > 1:
+            x_values = np.arange(1, len(loss))
+            plt.plot(x_values, loss[:-1], label=label)
+
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
     plt.title("All Loss Curves")
