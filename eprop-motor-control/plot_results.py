@@ -73,9 +73,14 @@ def plot_training_error(loss, out_path, x=None, xlabel="training iteration"):
         x = x[:minlen]
         loss = loss[:minlen]
     fig, ax = plt.subplots()
-    ax.plot(x, loss)
+    ax.plot(x[:-1], loss[:-1])
     ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} (y_k^t -y_k^{*,t})^2$")
     ax.set_xlabel(xlabel)
+
+    # Adjust x-axis limits to avoid showing the last point
+    if len(x) > 1:
+        ax.set_xlim(x[0], x[-2])
+
     ax.set_xlim(x[0], x[-1])
     ax.xaxis.get_major_locator().set_params(integer=True)
     fig.tight_layout()

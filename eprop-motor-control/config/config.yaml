@@ -21,7 +21,7 @@ task:
 rbf:
   num_centers: 10  # Number of RBF centers for input encoding
   width: 0.25  # RBF width (rad)
-  scale_rate: 1000.0  # RBF output scaling factor (Hz)
+  scale_rate: 300.0  # RBF output scaling factor (Hz)
 
 # Neuron parameters
 neurons:

@@ -626,7 +626,7 @@ def run_simulation(
         {
             "amplitude_times": target_amp_times,
             "amplitude_values": np.tile(
-                concatenated_desired_targets[key] * 1e1, n_iter
+                concatenated_desired_targets[key], n_iter
             ),
         }
         for key in concatenated_desired_targets.keys()
@@ -920,4 +920,4 @@ if __name__ == "__main__":
         scenarios.append(folder_name)
 
     # Plot and compare all loss curves from the results directory
-    plot_all_loss_curves(results_dir, showfig=False)
+    # plot_all_loss_curves(results_dir, showfig=False)
