@@ -157,9 +157,12 @@ def run_simulation(
     sim_cfg = config["simulation"]
     task_cfg = config["task"]
 
-    n_batch = int(task_cfg["n_batch"])
+    # Extract task parameters
+    n_trajectories_to_use = int(task_cfg["n_trajectories_to_use"])
+    n_samples_per_trajectory_to_use = int(task_cfg["n_samples_per_trajectory_to_use"])
+    gradient_batch_size = int(task_cfg["gradient_batch_size"])
+    n_samples = n_trajectories_to_use * n_samples_per_trajectory_to_use
     n_iter = int(task_cfg["n_iter"])
-    n_samples = int(task_cfg["n_samples"])
 
     # Compute all timing values directly in milliseconds
     step_ms = sim_cfg["step"]
@@ -169,7 +172,7 @@ def run_simulation(
         "sequence": task_cfg["sequence"],
         "learning_window": task_cfg["sequence"],
         # Ensure task duration matches integer number of time steps
-        "task": n_timesteps_per_sequence * n_samples * n_iter * n_batch * step_ms,
+        "task": n_timesteps_per_sequence * n_samples * n_iter * step_ms,
         "offset_gen": task_cfg["offset_gen"] * step_ms,
         "delay_in_rec": task_cfg["delay_in_rec"] * step_ms,
         "delay_rec_out": task_cfg["delay_rec_out"] * step_ms,
@@ -192,7 +195,7 @@ def run_simulation(
     # Set up simulation
     params_setup = {
         "eprop_learning_window": duration["learning_window"],
-        "eprop_reset_neurons_on_update": True,
+        "eprop_reset_neurons_on_update": False,  # Do not reset neurons on update
         "eprop_update_interval": duration["sequence"],
         "print_time": sim_cfg["print_time"],
         "resolution": duration["step"],
@@ -328,7 +331,7 @@ def run_simulation(
     params_syn_eprop_exc = {
         "optimizer": {
             **config["synapses"]["exc"]["optimizer"],
-            "batch_size": n_batch,
+            "batch_size": gradient_batch_size,
         },
         "average_gradient": config["synapses"]["average_gradient"],
         "weight_recorder": wr,
@@ -337,7 +340,7 @@ def run_simulation(
     params_syn_eprop_inh = {
         "optimizer": {
             **config["synapses"]["inh"]["optimizer"],
-            "batch_size": n_batch,
+            "batch_size": gradient_batch_size,
         },
         "weight": config["synapses"]["inh"]["weight"],
         "average_gradient": config["synapses"]["average_gradient"],
@@ -485,14 +488,15 @@ def run_simulation(
     # In the dataset, each batch contains 10 samples, so if we select 2 batches and 5 samples per batch,
     # we get 10 samples in total.
     # Create a list of indices for the selected batches and samples
-    samples_per_batch = 10  # Number of samples per batch
+    samples_per_trajectory_in_dataset = int(task_cfg["samples_per_trajectory_in_dataset"])
     sample_ids = []
+    for i in range(n_trajectories_to_use):
+        start_index = i * samples_per_trajectory_in_dataset
+        for j in range(n_samples_per_trajectory_to_use):
+            sample_ids.append(start_index + j)
 
-    for batch in range(n_batch):
-        start_index = (
-            batch * samples_per_batch
-        )  # Calculate the starting index of the batch
-        sample_ids.extend(range(start_index, start_index + n_samples))
+    # Ensure we have the correct number of samples
+    assert len(sample_ids) == n_samples
 
     trajectories = []
     trajectory_original_resolution = (
@@ -577,11 +581,11 @@ def run_simulation(
             rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
         rbf_inputs_list.append(rbf_inputs)
 
-    # Stack all RBF inputs: shape = (n_batch * n_samples * n_timesteps_per_sequence, num_centers)
+    # Stack all RBF inputs: shape = (n_samples * n_timesteps_per_sequence, num_centers)
     rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * scale_rate
 
     # Calculate total number of input time steps
-    total_input_steps = n_timesteps_per_sequence * n_batch * n_samples * n_iter
+    total_input_steps = n_timesteps_per_sequence * n_samples * n_iter
 
     # Time vector for input rates
     in_rate_times = (
@@ -613,9 +617,9 @@ def run_simulation(
         "neg": np.concatenate(desired_targets_list["neg"]),
     }
 
-    # The length of the target sample should match n_timesteps_per_sequence * n_batch * n_samples
+    # The length of the target sample should match n_timesteps_per_sequence * n_samples
     length_target_sample = len(concatenated_desired_targets["pos"])
-    assert length_target_sample == n_timesteps_per_sequence * n_batch * n_samples
+    assert length_target_sample == n_timesteps_per_sequence * n_samples
 
     target_amp_times = (
         np.arange(length_target_sample * n_iter) * duration["step"]

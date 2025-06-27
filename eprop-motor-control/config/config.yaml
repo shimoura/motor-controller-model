@@ -7,7 +7,11 @@ simulation:
 
 # Task/experiment setup parameters
 task:
-  n_batch: 1  # Number of batches per training iteration
+  samples_per_trajectory_in_dataset: 10 # Describes the structure of your dataset file
+  n_trajectories_to_use: 1 # Describes how many trajectories you want to use for this run
+  n_samples_per_trajectory_to_use: 1 # Describes how many samples to take from the start of each of those trajectories
+  gradient_batch_size: 1 # Batch size for gradient computation
+
   n_iter: 100  # Number of training iterations
   sequence: 650  # Sequence length (steps); duration in ms
   offset_gen: 1  # Input generator offset (steps); duration in ms = offset_gen * step
@@ -15,7 +19,6 @@ task:
   delay_rec_out: 1  # Recurrent to output delay (steps); duration in ms = delay_rec_out * step
   delay_out_norm: 1  # Output normalization delay (steps); duration in ms = delay_out_norm * step
   extension_sim: 1  # Simulation extension (steps); duration in ms = extension_sim * step
-  n_samples: 1 # Number of samples
 
 # RBF encoding parameters
 rbf:
