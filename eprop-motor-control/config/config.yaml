@@ -52,7 +52,7 @@ neurons:
 
 # Synapse parameters
 synapses:
-  w_default: 100.0  # Default synaptic weight (pA)
+  w_input: 100.0  # Default synaptic weight (pA)
   w_rec: 100.0  # Recurrent synaptic weight (pA)
   g: 4.0  # Inhibitory/excitatory weight ratio
   conn_bernoulli_p: 0.1  # Connection probability for recurrent connections

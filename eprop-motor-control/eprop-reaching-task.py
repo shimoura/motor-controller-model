@@ -321,7 +321,7 @@ def run_simulation(
     }
 
     # Synapse parameters from config
-    w_default = config["synapses"]["w_default"]
+    w_input = config["synapses"]["w_input"]
     w_rec = config["synapses"]["w_rec"]
     g = config["synapses"]["g"]
 
@@ -356,7 +356,7 @@ def run_simulation(
         "synapse_model": "static_synapse",
         "delay": duration["step"],
         "weight": nest.math.redraw(
-            nest.random.normal(mean=w_default, std=w_default * 0.1), min=0.0, max=1000.0
+            nest.random.normal(mean=w_input, std=w_input * 0.1), min=0.0, max=1000.0
         ),
     }
 
@@ -772,6 +772,8 @@ def run_simulation(
                     return obj
 
             config_serializable = make_json_serializable(config)
+            # Add plastic_input_to_rec info to config before saving
+            config_serializable["plastic_input_to_rec"] = plastic_input_to_rec
             np.savez(
                 os.path.join(out_dir, "results.npz"),
                 loss=loss,
@@ -884,12 +886,14 @@ if __name__ == "__main__":
             if args.learning_rate is not None:
                 param_dict["learning_rate_exc"] = args.learning_rate
                 param_dict["learning_rate_inh"] = args.learning_rate
+            # Add plastic_input_to_rec info to folder name
             folder_name = "_".join(
                 f"{k.replace('.', '_')}_{v}" for k, v in param_dict.items()
             )
+            folder_name += f"_plastic_input_to_rec_{args.plastic_input_to_rec}"
             sim_dir = os.path.join(results_dir, folder_name)
             os.makedirs(sim_dir, exist_ok=True)
-            print(f"Running scenario: {param_dict}")
+            print(f"Running scenario: {param_dict}, plastic_input_to_rec={args.plastic_input_to_rec}")
             run_simulation(
                 **param_dict,
                 result_dir=sim_dir,
@@ -903,7 +907,9 @@ if __name__ == "__main__":
         if args.learning_rate is not None:
             param_dict["learning_rate_exc"] = args.learning_rate
             param_dict["learning_rate_inh"] = args.learning_rate
-        sim_dir = os.path.join(results_dir, "default")
+        # Add plastic_input_to_rec info to folder name
+        folder_name = f"default_plastic_input_to_rec_{args.plastic_input_to_rec}"
+        sim_dir = os.path.join(results_dir, folder_name)
         os.makedirs(sim_dir, exist_ok=True)
         run_simulation(
             result_dir=sim_dir,
@@ -911,7 +917,7 @@ if __name__ == "__main__":
             plastic_input_to_rec=args.plastic_input_to_rec,
             **param_dict,
         )
-        scenarios.append("default")
+        scenarios.append(folder_name)
 
     # Plot and compare all loss curves from the results directory
     plot_all_loss_curves(results_dir, showfig=False)

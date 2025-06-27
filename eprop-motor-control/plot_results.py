@@ -258,7 +258,6 @@ def plot_spikes_and_dynamics(
     axs[0, 1].set_title("Post-training window", fontsize=12, fontweight="bold")
     for i in range(8):
         axs[i, 0].label_outer()
-        axs[i, 1].label_outer()
         axs[i, 0].tick_params(axis="both", which="major", labelsize=8)
         axs[i, 1].tick_params(axis="both", which="major", labelsize=8)
     axs[-1, 0].set_xlabel(r"$t$ (ms)")
@@ -349,7 +348,7 @@ def plot_weight_matrices(weights_pre_train, weights_post_train, colors, out_path
         out_path: Path to save the figure
     """
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        "cmap", ((0.0, colors["blue"]), (0.5, colors["white"]), (1.0, colors["red"]))
+        "cmap", ((0.0, colors["red"]), (0.5, colors["white"]), (1.0, colors["blue"]))
     )
     fig, axs = plt.subplots(2, 2, sharex="col", sharey="row", figsize=(10, 8))
     all_w_extrema = []
