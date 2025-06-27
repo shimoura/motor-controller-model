@@ -158,10 +158,10 @@ def run_simulation(
     task_cfg = config["task"]
 
     # Extract task parameters
-    n_trajectories_to_use = int(task_cfg["n_trajectories_to_use"])
+    trajectory_ids_to_use = task_cfg["trajectory_ids_to_use"]
     n_samples_per_trajectory_to_use = int(task_cfg["n_samples_per_trajectory_to_use"])
     gradient_batch_size = int(task_cfg["gradient_batch_size"])
-    n_samples = n_trajectories_to_use * n_samples_per_trajectory_to_use
+    n_samples = len(trajectory_ids_to_use) * n_samples_per_trajectory_to_use
     n_iter = int(task_cfg["n_iter"])
 
     # Compute all timing values directly in milliseconds
@@ -490,8 +490,11 @@ def run_simulation(
     # Create a list of indices for the selected batches and samples
     samples_per_trajectory_in_dataset = int(task_cfg["samples_per_trajectory_in_dataset"])
     sample_ids = []
-    for i in range(n_trajectories_to_use):
-        start_index = i * samples_per_trajectory_in_dataset
+    for traj_id in trajectory_ids_to_use:
+        # Calculate the starting index for this trajectory's block in the dataset
+        start_index = traj_id * samples_per_trajectory_in_dataset
+
+        # Add the desired number of samples from that trajectory to our list
         for j in range(n_samples_per_trajectory_to_use):
             sample_ids.append(start_index + j)
 
