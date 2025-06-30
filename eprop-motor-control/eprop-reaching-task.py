@@ -189,9 +189,6 @@ def run_simulation(
         duration["task"] + duration["total_offset"] + duration["extension_sim"]
     )
 
-    # Calculate number of time steps per sequence
-    n_timesteps_per_sequence = int(duration["sequence"] / duration["step"])
-
     # Set up simulation
     params_setup = {
         "eprop_learning_window": duration["learning_window"],
