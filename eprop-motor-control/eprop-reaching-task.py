@@ -173,20 +173,11 @@ def run_simulation(
         "learning_window": task_cfg["sequence"],
         # Ensure task duration matches integer number of time steps
         "task": n_timesteps_per_sequence * n_samples * n_iter * step_ms,
-        "offset_gen": task_cfg["offset_gen"] * step_ms,
-        "delay_in_rec": task_cfg["delay_in_rec"] * step_ms,
-        "delay_rec_out": task_cfg["delay_rec_out"] * step_ms,
-        "delay_out_norm": task_cfg["delay_out_norm"] * step_ms,
         "extension_sim": task_cfg["extension_sim"] * step_ms,
     }
-    duration["delays"] = (
-        duration["delay_in_rec"]
-        + duration["delay_rec_out"]
-        + duration["delay_out_norm"]
-    )
-    duration["total_offset"] = duration["offset_gen"] + duration["delays"]
+
     duration["sim"] = (
-        duration["task"] + duration["total_offset"] + duration["extension_sim"]
+        duration["task"] + duration["extension_sim"]
     )
 
     # Set up simulation
@@ -205,6 +196,9 @@ def run_simulation(
     nest.ResetKernel()
     nest.set(**params_setup)
 
+    # Install the rb_neuron module if not already installed
+    nest.Install("motor_neuron_module")
+
     # %% ###########################################################################################################
     # Set input parameters
     # ~~~~~~~~~~~~~~~~~~~~~
@@ -213,8 +207,6 @@ def run_simulation(
     num_centers = int(
         config["rbf"]["num_centers"]
     )  # Ensure integer for np.linspace and indexing
-    centers = np.linspace(0.0, np.pi / 2.0, num_centers)
-    width = config["rbf"]["width"]
     scale_rate = config["rbf"]["scale_rate"]
 
     # %% ###########################################################################################################
@@ -224,7 +216,7 @@ def run_simulation(
     # Additionally, we already create an output target rate generator, which we will configure later.
 
     # Neuron parameters from config
-    n_in = num_centers
+    n_rb = num_centers
     n_rec = int(config["neurons"]["n_rec"])
     n_out = int(config["neurons"]["n_out"])
     exc_ratio = config["neurons"]["exc_ratio"]
@@ -232,11 +224,23 @@ def run_simulation(
     n_rec_inh = n_rec - n_rec_exc
     params_nrn_rec = config["neurons"]["rec"]
     params_nrn_out = config["neurons"]["out"]
+    params_rb_neuron = config["neurons"]["rb"]
 
     ####################
 
     # Create inhomogeneous Poisson generator for input
-    gen_poisson_in = nest.Create("inhomogeneous_poisson_generator", n_in)
+    gen_poisson_in = nest.Create("inhomogeneous_poisson_generator")
+
+    # Create the rb_neuron population to act as the RBF encoding layer
+    nrns_rb = nest.Create("rb_neuron", n_rb)
+
+    # Set parameters for the rb_neuron population
+    # The 'simulation_steps' parameter is crucial for the internal buffer size
+    params_rb_neuron["simulation_steps"] = int(
+        duration["sim"] / duration["step"] + 1
+    )  # Total number of simulation steps
+    # The 1 is added to ensure the buffer can hold the last step
+    nest.SetStatus(nrns_rb, params_rb_neuron)
 
     # The suffix _bsshslm_2020 follows the NEST convention to indicate in the model name the paper
     # that introduced it by the first letter of the authors' last names and the publication year.
@@ -271,15 +275,13 @@ def run_simulation(
 
     params_mm_rec = config["recording"]["mm_rec"]
     params_mm_rec["interval"] = duration["step"]
-    params_mm_rec["start"] = duration["offset_gen"] + duration["delay_in_rec"]
-    params_mm_rec["stop"] = (
-        duration["offset_gen"] + duration["delay_in_rec"] + duration["task"]
-    )
+    params_mm_rec["start"] = duration["step"]
+    params_mm_rec["stop"] = duration["task"]
 
     params_mm_out = config["recording"]["mm_out"]
     params_mm_out["interval"] = duration["step"]
-    params_mm_out["start"] = duration["total_offset"]
-    params_mm_out["stop"] = duration["total_offset"] + duration["task"]
+    params_mm_out["start"] = duration['step']
+    params_mm_out["stop"] = duration["task"]
 
     params_wr = {
         "senders": nrns_rec[
@@ -287,13 +289,13 @@ def run_simulation(
         ],  # limit senders to subsample weights to record
         "targets": nrns_rec[:n_record_w]
         + nrns_out,  # limit targets to subsample weights to record from
-        "start": duration["total_offset"],
-        "stop": duration["total_offset"] + duration["task"],
+        "start": duration["step"],
+        "stop": duration["task"],
     }
 
     params_sr = {
-        "start": duration["total_offset"],
-        "stop": duration["total_offset"] + duration["task"],
+        "start": duration["step"],
+        "stop": duration["task"],
     }
 
     ####################
@@ -352,14 +354,6 @@ def run_simulation(
         ],  # ms, for technical reasons pass readout neuron membrane time constant
     }
 
-    params_syn_input = {
-        "synapse_model": "static_synapse",
-        "delay": duration["step"],
-        "weight": nest.math.redraw(
-            nest.random.normal(mean=w_input, std=w_input * 0.1), min=0.0, max=1000.0
-        ),
-    }
-
     # Define the parameters for the recurrent connections
     params_syn_rec_exc = copy.deepcopy(params_syn_base)
     params_syn_rec_exc["weight"] = nest.math.redraw(
@@ -372,6 +366,22 @@ def run_simulation(
         nest.random.normal(mean=-w_rec * g, std=g * w_rec * 0.1), min=-1000.0, max=0.0
     )
     params_syn_rec_inh["synapse_model"] = "eprop_synapse_bsshslm_2020_inh"
+
+    # Define static synapses from input generators to the rb_neuron layer
+    params_syn_input_to_rb = {
+        "synapse_model": "static_synapse",
+        "delay": duration["step"],
+        "weight": 1.0,  # Each input spike is a single event
+    }
+
+    # Define synapses from the rb_neuron layer to the recurrent network
+    params_syn_rb_to_rec = {
+        "synapse_model": "static_synapse",
+        "delay": duration["step"],
+        "weight": nest.math.redraw(
+            nest.random.normal(mean=w_input, std=w_input * 0.1), min=0.0, max=1000.0
+        ),
+    }
 
     # Define the parameters for the feedback connections from readout neurons to recurrent neurons
     params_syn_feedback = {
@@ -408,34 +418,34 @@ def run_simulation(
         params_syn_eprop_inh,
     )
 
-    # Connect each Poisson generator to a proportion of the excitatory and inhibitory populations
+    # Connect input Poisson generators to the rb_neuron population
+    nest.Connect(
+        gen_poisson_in, nrns_rb, params_conn_all_to_all, params_syn_input_to_rb
+    )
+
+    # Connect the rb_neuron population to the recurrent neurons
     if plastic_input_to_rec:
-        # Fully connect all input neurons to all recurrent neurons with plastic synapses
-        nest.Connect(
-            gen_poisson_in,
-            nrns_rec,
-            params_conn_all_to_all,
-            params_syn_rec_exc,
-        )
+        # If input-to-recurrent connections are plastic, use the eprop synapse models
+        nest.Connect(nrns_rb, nrns_rec, params_conn_all_to_all, params_syn_rec_exc)
     else:
-        for i, poisson_node in enumerate(gen_poisson_in):
+        for i, rb_node in enumerate(nrns_rb):
             # Connect to a proportion of excitatory neurons
             nest.Connect(
-                poisson_node,
+                rb_node,
                 nrns_rec_exc[
-                    int(i * n_rec_exc / n_in) : int((i + 1) * n_rec_exc / n_in)
+                    int(i * n_rec_exc / n_rb) : int((i + 1) * n_rec_exc / n_rb)
                 ],
                 params_conn_all_to_all,
-                params_syn_input,
+                params_syn_rb_to_rec,
             )
             # Connect to a proportion of inhibitory neurons
             nest.Connect(
-                poisson_node,
+                rb_node,
                 nrns_rec_inh[
-                    int(i * n_rec_inh / n_in) : int((i + 1) * n_rec_inh / n_in)
+                    int(i * n_rec_inh / n_rb) : int((i + 1) * n_rec_inh / n_rb)
                 ],
                 params_conn_all_to_all,
-                params_syn_input,
+                params_syn_rb_to_rec,
             )
 
     # Connect recurrent neurons to themselves
@@ -485,7 +495,9 @@ def run_simulation(
     # In the dataset, each batch contains 10 samples, so if we select 2 batches and 5 samples per batch,
     # we get 10 samples in total.
     # Create a list of indices for the selected batches and samples
-    samples_per_trajectory_in_dataset = int(task_cfg["samples_per_trajectory_in_dataset"])
+    samples_per_trajectory_in_dataset = int(
+        task_cfg["samples_per_trajectory_in_dataset"]
+    )
     sample_ids = []
     for traj_id in trajectory_ids_to_use:
         # Calculate the starting index for this trajectory's block in the dataset
@@ -569,43 +581,37 @@ def run_simulation(
     # Create input
     # ~~~~~~~~~~~~
 
-    # Radial basis function (RBF) parameters for encoding the trajectory data
-    def gaussian_rbf(x, center, width):
-        return np.exp(-((x - center) ** 2) / (2 * width**2))
-
-    # Prepare RBF inputs for all samples (trajectories)
-    rbf_inputs_list = []
-    for trajectory_sample in trajectories:
-        rbf_inputs = np.zeros((n_timesteps_per_sequence, num_centers))
-        for i, center in enumerate(centers):
-            rbf_inputs[:, i] = gaussian_rbf(trajectory_sample, center, width)
-        rbf_inputs_list.append(rbf_inputs)
-
-    # Stack all RBF inputs: shape = (n_samples * n_timesteps_per_sequence, num_centers)
-    rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * scale_rate
-
-    # Calculate total number of input time steps
-    total_input_steps = n_timesteps_per_sequence * n_samples * n_iter
+    # Prepare input rates for all samples (trajectories)
+    # Normalize and scale the concatenated trajectories to input spike rates
+    MIN_ANGLE = np.min(np.concatenate(trajectories))
+    MAX_ANGLE = np.max(np.concatenate(trajectories))
+    MIN_RATE = 5.0
+    MAX_RATE = scale_rate
+    input_spk_rate = MIN_RATE + (np.concatenate(trajectories) - MIN_ANGLE) * (
+        MAX_RATE - MIN_RATE
+    ) / (MAX_ANGLE - MIN_ANGLE)
+    input_spk_rate = np.tile(input_spk_rate, n_iter)  # Repeat for all iterations
 
     # Time vector for input rates
     in_rate_times = (
-        np.arange(total_input_steps) * duration["step"] + duration["offset_gen"]
+        np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
     )
 
-    # Tile the RBF input for all iterations
-    tiled_rbf_inputs = np.tile(
-        rate_based_rbf_inputs, (n_iter, 1)
-    )  # shape: (total_input_steps, num_centers)
-
-    params_gen_poisson_in = [
-        {
-            "rate_times": in_rate_times,
-            "rate_values": tiled_rbf_inputs[:, n_center],
-        }
-        for n_center in range(num_centers)
-    ]
+    params_gen_poisson_in = {
+        "rate_times": in_rate_times,
+        "rate_values": input_spk_rate,
+    }
 
     nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
+
+    # Set desired centers for the rb_neuron population
+    # The centers are evenly spaced across the range of the trajectory data
+    centers = np.linspace(MIN_RATE, MAX_RATE, num_centers)
+    # Round centers for numerical stability
+    centers = np.round(centers, decimals=2)
+    # Round the desired values for numerical stability and set for each rb_neuron
+    for i, nrn in enumerate(nrns_rb):
+        nest.SetStatus(nrn, {"desired": centers[i]})
 
     # %% ###########################################################################################################
     # Create output
@@ -622,8 +628,7 @@ def run_simulation(
     assert length_target_sample == n_timesteps_per_sequence * n_samples
 
     target_amp_times = (
-        np.arange(length_target_sample * n_iter) * duration["step"]
-        + duration["offset_gen"]
+        np.arange(length_target_sample * n_iter) * duration["step"] + duration["step"]
     )
 
     params_gen_rate_target = [
@@ -648,7 +653,7 @@ def run_simulation(
     # synapse. This step is required purely for technical reasons.
 
     gen_spk_final_update = nest.Create(
-        "spike_generator", 1, {"spike_times": [duration["task"] + duration["delays"]]}
+        "spike_generator", 1, {"spike_times": [duration["task"] + duration["extension_sim"]]}
     )
 
     nest.Connect(gen_spk_final_update, nrns_rec, "all_to_all", {"weight": 1000.0})

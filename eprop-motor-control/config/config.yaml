@@ -8,22 +8,17 @@ simulation:
 # Task/experiment setup parameters
 task:
   samples_per_trajectory_in_dataset: 10 # Describes the structure of your dataset file
-  trajectory_ids_to_use: [1] # Provide a specific list of trajectory IDs to use
+  trajectory_ids_to_use: [0] # Provide a specific list of trajectory IDs to use
   n_samples_per_trajectory_to_use: 1 # Describes how many samples to take from the start of each of those trajectories
   gradient_batch_size: 1 # Batch size for gradient computation
 
   n_iter: 100  # Number of training iterations
   sequence: 650  # Sequence length (steps); duration in ms
-  offset_gen: 1  # Input generator offset (steps); duration in ms = offset_gen * step
-  delay_in_rec: 1  # Input to recurrent delay (steps); duration in ms = delay_in_rec * step
-  delay_rec_out: 1  # Recurrent to output delay (steps); duration in ms = delay_rec_out * step
-  delay_out_norm: 1  # Output normalization delay (steps); duration in ms = delay_out_norm * step
   extension_sim: 1  # Simulation extension (steps); duration in ms = extension_sim * step
 
 # RBF encoding parameters
 rbf:
   num_centers: 10  # Number of RBF centers for input encoding
-  width: 0.25  # RBF width (rad)
   scale_rate: 500.0  # RBF output scaling factor (Hz)
 
 # Neuron parameters
@@ -52,11 +47,16 @@ neurons:
     regular_spike_arrival: false  # Use regular spike arrival (true/false)
     tau_m: 20.0  # Membrane time constant (ms)
     V_m: 0.0  # Initial membrane potential (mV)
+  rb:
+    kp: 1000.0             # Input gain
+    sdev: 100.0          # RBF width
+    base_rate: 0.0     # Base firing rate in Hz
+    buffer_size: 50.0   # Size of the sliding window in ms
 
 # Synapse parameters
 synapses:
-  w_input: 100.0  # Default synaptic weight (pA)
-  w_rec: 10.0  # Recurrent synaptic weight (pA)
+  w_input: 200.0  # Default synaptic weight (pA)
+  w_rec: 100.0  # Recurrent synaptic weight (pA)
   g: 4.0  # Inhibitory/excitatory weight ratio
   conn_bernoulli_p: 0.1  # Connection probability for recurrent connections
   average_gradient: false  # Average gradient across batch (true/false)
@@ -64,8 +64,6 @@ synapses:
   feedback_delay: 1.0  # Delay for feedback synapses (ms)
   rate_target_delay: 1.0  # Delay for rate target synapses (ms)
   receptor_type: 2  # Receptor type for rate target synapses
-  input_weight_mean: 100.0  # Mean initial input synaptic weight (pA)
-  input_weight_std: 10.0  # Stddev initial input synaptic weight (pA)
 
   exc:
     optimizer:
