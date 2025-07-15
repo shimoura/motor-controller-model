@@ -102,7 +102,7 @@ def plot_training_error(loss, out_path, x=None, xlabel="training iteration"):
         minlen = min(len(x), len(loss))
         x = x[:minlen]
         loss = loss[:minlen]
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(4, 3))  # Changed figure size here
     ax.plot(x[:-1], loss[:-1])
     ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} (y_k^t -y_k^{*,t})^2$")
     ax.set_xlabel(xlabel)
@@ -114,7 +114,7 @@ def plot_training_error(loss, out_path, x=None, xlabel="training iteration"):
     ax.set_xlim(x[0], x[-1])
     ax.xaxis.get_major_locator().set_params(integer=True)
     fig.tight_layout()
-    fig.savefig(out_path)
+    fig.savefig(out_path, dpi=300)
     plt.close(fig)
 
 
@@ -181,7 +181,7 @@ def plot_spikes_and_dynamics(
         (0, duration["sequence"]),
         (duration["task"] - duration["sequence"], duration["task"]),
     ]
-    fig, axs = plt.subplots(8, 2, sharex="col", figsize=(10, 14), dpi=120)
+    fig, axs = plt.subplots(8, 2, sharex="col", figsize=(6, 12), dpi=300)
 
     # Color cycles for better distinction
     rec_colors = [
