@@ -176,9 +176,7 @@ def run_simulation(
         "extension_sim": task_cfg["extension_sim"] * step_ms,
     }
 
-    duration["sim"] = (
-        duration["task"] + duration["extension_sim"]
-    )
+    duration["sim"] = duration["task"] + duration["extension_sim"]
 
     # Set up simulation
     params_setup = {
@@ -208,6 +206,7 @@ def run_simulation(
         config["rbf"]["num_centers"]
     )  # Ensure integer for np.linspace and indexing
     scale_rate = config["rbf"]["scale_rate"]
+    width = config["rbf"]["width"]  # RBF width in radians
 
     # %% ###########################################################################################################
     # Create neurons
@@ -216,15 +215,17 @@ def run_simulation(
     # Additionally, we already create an output target rate generator, which we will configure later.
 
     # Neuron parameters from config
-    n_rb = num_centers
-    n_rec = int(config["neurons"]["n_rec"])
-    n_out = int(config["neurons"]["n_out"])
-    exc_ratio = config["neurons"]["exc_ratio"]
-    n_rec_exc = int(n_rec * exc_ratio)
-    n_rec_inh = n_rec - n_rec_exc
-    params_nrn_rec = config["neurons"]["rec"]
-    params_nrn_out = config["neurons"]["out"]
-    params_rb_neuron = config["neurons"]["rb"]
+    n_rb = num_centers  # Number of radial basis function neurons
+    n_rec = int(config["neurons"]["n_rec"])  # Number of recurrent neurons
+    n_out = int(config["neurons"]["n_out"])  # Number of output neurons
+    exc_ratio = config["neurons"]["exc_ratio"]  # Ratio of excitatory neurons
+    n_rec_exc = int(n_rec * exc_ratio)  # Number of excitatory recurrent neurons
+    n_rec_inh = n_rec - n_rec_exc  # Number of inhibitory recurrent neurons
+    params_nrn_rec = config["neurons"]["rec"]  # Parameters for recurrent neurons
+    params_nrn_out = config["neurons"]["out"]  # Parameters for output neurons
+    params_rb_neuron = config["neurons"][
+        "rb"
+    ]  # Parameters for radial basis function neurons
 
     ####################
 
@@ -240,6 +241,9 @@ def run_simulation(
         duration["sim"] / duration["step"] + 1
     )  # Total number of simulation steps
     # The 1 is added to ensure the buffer can hold the last step
+
+    # sdev is noise std, scaled from angle domain to rate domain
+    params_rb_neuron["sdev"] = scale_rate * width
     nest.SetStatus(nrns_rb, params_rb_neuron)
 
     # The suffix _bsshslm_2020 follows the NEST convention to indicate in the model name the paper
@@ -280,7 +284,7 @@ def run_simulation(
 
     params_mm_out = config["recording"]["mm_out"]
     params_mm_out["interval"] = duration["step"]
-    params_mm_out["start"] = duration['step']
+    params_mm_out["start"] = duration["step"]
     params_mm_out["stop"] = duration["task"]
 
     params_wr = {
@@ -581,21 +585,12 @@ def run_simulation(
     # Create input
     # ~~~~~~~~~~~~
 
-    # Prepare input rates for all samples (trajectories)
-    # Normalize and scale the concatenated trajectories to input spike rates
-    MIN_ANGLE = np.min(np.concatenate(trajectories))
-    MAX_ANGLE = np.max(np.concatenate(trajectories))
-    MIN_RATE = 5.0
-    MAX_RATE = scale_rate
-    input_spk_rate = MIN_RATE + (np.concatenate(trajectories) - MIN_ANGLE) * (
-        MAX_RATE - MIN_RATE
-    ) / (MAX_ANGLE - MIN_ANGLE)
+    # Prepare input rates by directly scaling trajectory angles by scale_rate
+    input_spk_rate = scale_rate * np.concatenate(trajectories)
     input_spk_rate = np.tile(input_spk_rate, n_iter)  # Repeat for all iterations
 
     # Time vector for input rates
-    in_rate_times = (
-        np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
-    )
+    in_rate_times = np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
 
     params_gen_poisson_in = {
         "rate_times": in_rate_times,
@@ -604,14 +599,17 @@ def run_simulation(
 
     nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
 
-    # Set desired centers for the rb_neuron population
-    # The centers are evenly spaced across the range of the trajectory data
-    centers = np.linspace(MIN_RATE, MAX_RATE, num_centers)
-    # Round centers for numerical stability
-    centers = np.round(centers, decimals=2)
-    # Round the desired values for numerical stability and set for each rb_neuron
+    # Set desired centers based on scaled angle centers,
+    # Define minimum and maximum angles for the radial basis function neurons
+    min_angle = np.min(trajectories)
+    max_angle = np.max(trajectories)
+    # Define centers in the angle domain
+    angle_centers = np.linspace(min_angle, max_angle, num_centers)
+    # Scale angle centers by scale_rate to get desired firing rates
+    desired_rates = scale_rate * angle_centers
+    # Set the desired rate for each rb_neuron
     for i, nrn in enumerate(nrns_rb):
-        nest.SetStatus(nrn, {"desired": centers[i]})
+        nest.SetStatus(nrn, {"desired": desired_rates[i]})
 
     # %% ###########################################################################################################
     # Create output
@@ -653,7 +651,9 @@ def run_simulation(
     # synapse. This step is required purely for technical reasons.
 
     gen_spk_final_update = nest.Create(
-        "spike_generator", 1, {"spike_times": [duration["task"] + duration["extension_sim"]]}
+        "spike_generator",
+        1,
+        {"spike_times": [duration["task"] + duration["extension_sim"]]},
     )
 
     nest.Connect(gen_spk_final_update, nrns_rec, "all_to_all", {"weight": 1000.0})
