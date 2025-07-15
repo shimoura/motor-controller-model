@@ -275,8 +275,8 @@ def run_simulation(
 
     mm_rec = nest.Create("multimeter", params_mm_rec)
     mm_out = nest.Create("multimeter", params_mm_out)
-    sr = nest.Create("spike_recorder", params_sr)
-    wr = nest.Create("weight_recorder", params_wr)
+    spike_recorder = nest.Create("spike_recorder", params_sr)
+    weight_recorder = nest.Create("weight_recorder", params_wr)
     nrns_rec_record = nrns_rec[:n_record]
 
     # %% ###########################################################################################################
@@ -298,13 +298,13 @@ def run_simulation(
     params_syn_eprop_exc = {
         "optimizer": {**syn_cfg["exc"]["optimizer"], "batch_size": gradient_batch_size},
         "average_gradient": syn_cfg["average_gradient"],
-        "weight_recorder": wr,
+        "weight_recorder": weight_recorder,
     }
     params_syn_eprop_inh = {
         "optimizer": {**syn_cfg["inh"]["optimizer"], "batch_size": gradient_batch_size},
         "weight": syn_cfg["inh"]["weight"],
         "average_gradient": syn_cfg["average_gradient"],
-        "weight_recorder": wr,
+        "weight_recorder": weight_recorder,
     }
     params_syn_base = {
         "synapse_model": "eprop_synapse_bsshslm_2020",
@@ -432,7 +432,7 @@ def run_simulation(
     nest.Connect(
         gen_rate_target[1], nrns_out[1], params_conn_one_to_one, params_syn_rate_target
     )
-    nest.Connect(nrns_rec, sr, params_conn_all_to_all, params_syn_static)
+    nest.Connect(nrns_rec, spike_recorder, params_conn_all_to_all, params_syn_static)
     nest.Connect(mm_rec, nrns_rec_record, params_conn_all_to_all, params_syn_static)
     nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
 
@@ -590,8 +590,8 @@ def run_simulation(
     events_mm_rec, events_mm_out, events_sr, events_wr = (
         mm_rec.get("events"),
         mm_out.get("events"),
-        sr.get("events"),
-        wr.get("events"),
+        spike_recorder.get("events"),
+        weight_recorder.get("events"),
     )
 
     # Evaluate training error (loss)
