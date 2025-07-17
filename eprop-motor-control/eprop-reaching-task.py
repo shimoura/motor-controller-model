@@ -175,7 +175,7 @@ def run_simulation(
         "step": step_ms,
         "sequence": task_cfg["sequence"],
         "learning_window": task_cfg["sequence"],
-        "extension_sim": task_cfg.get("extension_sim", 1.0),
+        "extension_sim": step_ms, # Extension time after task ends
     }
     trajectory_ids_to_use = task_cfg["trajectory_ids_to_use"]
     n_samples_per_trajectory_to_use = int(task_cfg["n_samples_per_trajectory_to_use"])
@@ -421,17 +421,27 @@ def run_simulation(
                     params_syn_rb_to_rec,
                 )
 
-    # Connect the rest of the network
+    # Connect recurrent neurons to each other
     nest.Connect(nrns_rec_exc, nrns_rec, params_conn_bernoulli, params_syn_rec_exc)
     nest.Connect(nrns_rec_inh, nrns_rec, params_conn_bernoulli, params_syn_rec_inh)
+
+    # Connect recurrent neurons to readout neurons
     nest.Connect(nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc)
-    nest.Connect(nrns_out, nrns_rec, params_conn_all_to_all, params_syn_feedback)
+    nest.Connect(nrns_rec_inh, nrns_out, params_conn_all_to_all, params_syn_rec_inh)
+
+    # Connect readout neurons to the target signal generator
+    nest.Connect(nrns_out, nrns_rec_exc, params_conn_all_to_all, params_syn_feedback)
+    nest.Connect(nrns_out, nrns_rec_inh, params_conn_all_to_all, params_syn_feedback)
+
+    # Connect the target signal generators to the readout neurons
     nest.Connect(
         gen_rate_target[0], nrns_out[0], params_conn_one_to_one, params_syn_rate_target
     )
     nest.Connect(
         gen_rate_target[1], nrns_out[1], params_conn_one_to_one, params_syn_rate_target
     )
+
+    # Connect the recorder devices
     nest.Connect(nrns_rec, spike_recorder, params_conn_all_to_all, params_syn_static)
     nest.Connect(mm_rec, nrns_rec_record, params_conn_all_to_all, params_syn_static)
     nest.Connect(mm_out, nrns_out, params_conn_all_to_all, params_syn_static)
