@@ -526,7 +526,7 @@ def run_simulation(
         width = rbf_cfg["width"]
 
         # Define the number of centers and create RBF inputs
-        centers = np.linspace(np.min(trajectories), np.max(trajectories), num_centers)
+        centers = np.linspace(0.0, np.pi, num_centers)
         rbf_inputs_list = []
         for trajectory_sample in trajectories:
             rbf_inputs_for_sample = np.zeros((n_timesteps_per_sequence, num_centers))
@@ -558,7 +558,7 @@ def run_simulation(
         )
         # Set the desired center for each rb_neuron's receptive field
         angle_centers = np.linspace(
-            np.min(trajectories), np.max(trajectories), num_centers
+            0.0, np.pi, num_centers
         )
         desired_rates = rbf_cfg["scale_rate"] * angle_centers
         for i, nrn in enumerate(nrns_rb):
