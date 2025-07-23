@@ -177,15 +177,19 @@ def run_simulation(
     # Define the timing structure of the experiment
     duration = {
         "step": step_ms,
-        "sequence": task_cfg["sequence"], # Original active sequence length
-        "silent_period": silent_period, # Duration of silent period
-        "total_sequence_with_silence": task_cfg["sequence"] + silent_period, # Total sequence length
-        "learning_window": task_cfg["sequence"] + silent_period, # Learning window covers total sequence
+        "sequence": task_cfg["sequence"],  # Original active sequence length
+        "silent_period": silent_period,  # Duration of silent period
+        "total_sequence_with_silence": task_cfg["sequence"]
+        + silent_period,  # Total sequence length
+        "learning_window": task_cfg["sequence"]
+        + silent_period,  # Learning window covers total sequence
         "extension_sim": step_ms,
     }
 
     # Number of timesteps for the total sequence including silence
-    n_timesteps_per_sequence = int(round(duration["total_sequence_with_silence"] / step_ms))
+    n_timesteps_per_sequence = int(
+        round(duration["total_sequence_with_silence"] / step_ms)
+    )
 
     trajectory_ids_to_use = task_cfg["trajectory_ids_to_use"]
     n_samples_per_trajectory_to_use = int(task_cfg["n_samples_per_trajectory_to_use"])
@@ -387,7 +391,10 @@ def run_simulation(
         if plastic_input_to_rec:
             # Connect Poisson generators to parrot neurons for plastic connections
             nest.Connect(
-                gen_poisson_in, parrot_neurons, params_conn_one_to_one, params_syn_static
+                gen_poisson_in,
+                parrot_neurons,
+                params_conn_one_to_one,
+                params_syn_static,
             )
             # Connect parrot neurons to recurrent neurons
             nest.Connect(
@@ -498,9 +505,7 @@ def run_simulation(
         assert len(sample_ids) == n_samples
 
     # Number of timesteps for the active sequence
-    n_timesteps_per_stimulus = int(
-        round(task_cfg["sequence"] / duration["step"])
-    )  
+    n_timesteps_per_stimulus = int(round(task_cfg["sequence"] / duration["step"]))
     trajectories, desired_targets_list = [], {"pos": [], "neg": []}
     for idx, sample_id in enumerate(sample_ids):
         # Use custom trajectory file if provided
@@ -524,14 +529,21 @@ def run_simulation(
         # Prepend zeros for the silent period
         if silent_period > 0:
             silent_steps = int(silent_period / duration["step"])
-            trajectory_signal = np.concatenate((np.zeros(silent_steps), trajectory_signal))
+            trajectory_signal = np.concatenate(
+                (np.zeros(silent_steps), trajectory_signal)
+            )
         trajectories.append(trajectory_signal)
 
         # Use custom target file if provided
         for i, key in enumerate(["pos", "neg"]):
             if target_files is not None and idx < len(target_files):
                 # Custom file: each row neuron_id,spike_time (comma or whitespace separated)
-                arr = np.loadtxt(target_files[idx], delimiter="," if "," in open(target_files[idx]).readline() else None)
+                arr = np.loadtxt(
+                    target_files[idx],
+                    delimiter=(
+                        "," if "," in open(target_files[idx]).readline() else None
+                    ),
+                )
                 if key == "pos":
                     spike_times = arr[arr[:, 0] <= 50][:, 1]
                 else:
@@ -546,16 +558,15 @@ def run_simulation(
             desired_targets_list[key].append(
                 np.convolve(target_hist, np.ones(20) / 10, mode="same")
             )
-    
+
     # Add silent period to each individual target histogram in desired_targets_list
-    if silent_period > 0: # Only add if silent duration is positive
+    if silent_period > 0:  # Only add if silent duration is positive
         for k in desired_targets_list:
             for i in range(len(desired_targets_list[k])):
                 # Prepend zeros to each target sequence
                 desired_targets_list[k][i] = np.concatenate(
                     (np.zeros(silent_steps), desired_targets_list[k][i])
                 )
-
 
     # %% ###########################################################################################################
     # Create Input and Output Signals
@@ -581,13 +592,17 @@ def run_simulation(
             rbf_inputs_list.append(rbf_inputs_for_sample)
 
         # Stack the RBF inputs from all samples and scale them to get firing rates.
-        rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"]
+        rate_based_rbf_inputs = (
+            np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"]
+        )
 
         # Tile the signals for all training iterations.
         tiled_rbf_inputs = np.tile(rate_based_rbf_inputs, (n_iter, 1))
 
         # Set the rate for each Poisson generator.
-        in_rate_times = np.arange(tiled_rbf_inputs.shape[0]) * duration["step"] + duration["step"]
+        in_rate_times = (
+            np.arange(tiled_rbf_inputs.shape[0]) * duration["step"] + duration["step"]
+        )
         params_gen_poisson_in = [
             {"rate_times": in_rate_times, "rate_values": tiled_rbf_inputs[:, i]}
             for i in range(num_centers)
@@ -596,14 +611,14 @@ def run_simulation(
     else:  # rb_neuron input creation
         input_spk_rate = np.concatenate(trajectories) * rbf_cfg["scale_rate"]
         input_spk_rate = np.tile(input_spk_rate, n_iter)
-        in_rate_times = np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
+        in_rate_times = (
+            np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
+        )
         nest.SetStatus(
             gen_poisson_in, {"rate_times": in_rate_times, "rate_values": input_spk_rate}
         )
         # Set the desired center for each rb_neuron's receptive field
-        angle_centers = np.linspace(
-            0.0, np.pi, num_centers
-        )
+        angle_centers = np.linspace(0.0, np.pi, num_centers)
         desired_rates = angle_centers * rbf_cfg["scale_rate"]
         for i, nrn in enumerate(nrns_rb):
             nest.SetStatus(nrn, {"desired": desired_rates[i]})
@@ -613,7 +628,8 @@ def run_simulation(
         k: np.concatenate(v) for k, v in desired_targets_list.items()
     }
     target_amp_times = (
-        np.arange(len(concatenated_targets["pos"]) * n_iter) * duration["step"] + duration["step"]
+        np.arange(len(concatenated_targets["pos"]) * n_iter) * duration["step"]
+        + duration["step"]
     )
     params_gen_rate_target = [
         {
@@ -677,7 +693,9 @@ def run_simulation(
         events_mm_out["target_signal"],
     )
     error = (readout_signal - target_signal) ** 2
-    loss_indices = np.arange(0, int(duration["task"]), int(duration["total_sequence_with_silence"]))
+    loss_indices = np.arange(
+        0, int(duration["task"]), int(duration["total_sequence_with_silence"])
+    )
     loss = 0.5 * np.add.reduceat(error, loss_indices)
 
     # %% ###########################################################################################################
@@ -745,6 +763,59 @@ def run_simulation(
         with open(os.path.join(out_dir, "config.json"), "w") as f:
             json.dump(config_serializable, f, indent=2)
     print(f"Results saved to {out_dir}")
+
+
+def collect_scan_results(results_dir, output_csv="scan_summary.csv"):
+    import csv, json
+    import numpy as np
+
+    rows = []
+    param_keys = set()
+    # First pass: collect all rows and scan for parameter keys (those with >1 unique value)
+    temp_rows = []
+    for folder in os.listdir(results_dir):
+        config_path = os.path.join(results_dir, folder, "config.json")
+        results_path = os.path.join(results_dir, folder, "results.npz")
+        if os.path.exists(config_path) and os.path.exists(results_path):
+            with open(config_path) as f:
+                config = json.load(f)
+            loss = np.load(results_path)["loss"]
+            final_loss = float(loss[-1]) if len(loss) > 0 else None
+            # Flatten top-level config keys and model_run_settings
+            row = {**config.get("model_run_settings", {})}
+            # Add all top-level keys except large dicts
+            for k, v in config.items():
+                if isinstance(v, (str, int, float, bool)) and k not in row:
+                    row[k] = v
+            # Add neurons and rbf keys if they are simple types
+            for group in ["neurons", "rbf"]:
+                for k, v in config.get(group, {}).items():
+                    if isinstance(v, (str, int, float, bool)) and k not in row:
+                        row[k] = v
+            row["folder"] = folder
+            row["final_loss"] = final_loss
+            temp_rows.append(row)
+    # Find keys with >1 unique value (scanned params)
+    if temp_rows:
+        all_keys = set().union(*(r.keys() for r in temp_rows))
+        for k in all_keys:
+            values = [r.get(k, None) for r in temp_rows]
+            # Keep keys with >1 unique value or if only one value but not None (for single param scans)
+            if (
+                len(set(values)) > 1
+                or (len(set(values)) == 1 and list(set(values))[0] is not None)
+            ) and k not in ["folder", "final_loss"]:
+                param_keys.add(k)
+    # Always include these columns
+    main_cols = sorted(param_keys) + ["folder", "final_loss"]
+    # Second pass: write only main columns
+    with open(os.path.join(results_dir, output_csv), "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=main_cols)
+        writer.writeheader()
+        for row in temp_rows:
+            filtered = {k: row.get(k, None) for k in main_cols}
+            writer.writerow(filtered)
+    print(f"Scan summary saved to {output_csv} with columns: {main_cols}")
 
 
 # ---
@@ -835,9 +906,7 @@ if __name__ == "__main__":
     trajectory_files = (
         args.trajectory_files.split(",") if args.trajectory_files else None
     )
-    target_files = (
-        args.target_files.split(",") if args.target_files else None
-    )
+    target_files = args.target_files.split(",") if args.target_files else None
     base_kwargs = {
         "plot_results": not args.no_plot,
         "plastic_input_to_rec": args.plastic_input_to_rec,
@@ -864,9 +933,11 @@ if __name__ == "__main__":
     # Execute simulation runs
     if scan_params and scan_values:
         if len(scan_params) != len(scan_values):
-            print(f"ERROR: Number of scan parameters ({len(scan_params)}) does not match number of scan value lists ({len(scan_values)}).\n"
-                  f"Each parameter must have a corresponding list of values.\n"
-                  f"Example: --scan-param a,b --scan-values '1,2;3,4' for a=[1,2], b=[3,4]")
+            print(
+                f"ERROR: Number of scan parameters ({len(scan_params)}) does not match number of scan value lists ({len(scan_values)}).\n"
+                f"Each parameter must have a corresponding list of values.\n"
+                f"Example: --scan-param a,b --scan-values '1,2;3,4' for a=[1,2], b=[3,4]"
+            )
             exit(1)
         print(f"--- Starting Parameter Scan ---")
         for combo in itertools.product(*scan_values):
@@ -876,8 +947,12 @@ if __name__ == "__main__":
                 f"{k.replace('.', '_')}_{v}" for k, v in param_dict.items()
             )
             # Add learning rates to folder name if present
-            lr_exc = param_dict.get('learning_rate_exc') or base_kwargs.get('learning_rate_exc')
-            lr_inh = param_dict.get('learning_rate_inh') or base_kwargs.get('learning_rate_inh')
+            lr_exc = param_dict.get("learning_rate_exc") or base_kwargs.get(
+                "learning_rate_exc"
+            )
+            lr_inh = param_dict.get("learning_rate_inh") or base_kwargs.get(
+                "learning_rate_inh"
+            )
             if lr_exc is not None:
                 folder_name += f"_lr_exc_{lr_exc}"
             if lr_inh is not None and lr_inh != lr_exc:
@@ -890,11 +965,12 @@ if __name__ == "__main__":
             print(f"\nRunning scenario: {param_dict}")
             run_simulation(result_dir=sim_dir, **scenario_kwargs)
         print("\n--- Parameter Scan Finished ---")
+        collect_scan_results(results_dir)
     else:
         folder_name = f"default_plastic_{args.plastic_input_to_rec}_manualRBF_{args.use_manual_rbf}"
         # Add learning rates to folder name if present
-        lr_exc = base_kwargs.get('learning_rate_exc')
-        lr_inh = base_kwargs.get('learning_rate_inh')
+        lr_exc = base_kwargs.get("learning_rate_exc")
+        lr_inh = base_kwargs.get("learning_rate_inh")
         if lr_exc is not None:
             folder_name += f"_lr_exc_{lr_exc}"
         if lr_inh is not None and lr_inh != lr_exc:
@@ -906,7 +982,7 @@ if __name__ == "__main__":
         print("\n--- Default Scenario Finished ---")
 
     # Plot summary graph comparing all runs
-    if not args.no_plot and os.path.exists(results_dir):
-        print("\nGenerating summary loss curve plot...")
-        plot_all_loss_curves(results_dir, showfig=False)
-        print("Summary plot saved.")
+    # if not args.no_plot and os.path.exists(results_dir):
+    #     print("\nGenerating summary loss curve plot...")
+    #     plot_all_loss_curves(results_dir, showfig=False)
+    #     print("Summary plot saved.")

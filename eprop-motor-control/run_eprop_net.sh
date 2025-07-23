@@ -19,3 +19,7 @@
 python eprop-reaching-task.py --use-manual-rbf --scan-param neurons.n_rec,rbf.num_centers --scan-values "200;15,20"
 wait
 python eprop-reaching-task.py --scan-param neurons.n_rec,rbf.num_centers --scan-values "200;15,20"
+wait
+python eprop-reaching-task.py --scan-param learning_rate --scan-values "0.01,0.1"
+wait
+python analyse_scan_results.py
