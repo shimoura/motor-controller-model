@@ -216,9 +216,6 @@ def run_simulation(
     rbf_cfg = config["rbf"]
     num_centers = int(rbf_cfg["num_centers"])
 
-    # adjust the scale rate based on step resolution
-    rbf_cfg["scale_rate"] = rbf_cfg["scale_rate"] / duration["step"]
-
     if use_manual_rbf:
         # Manual RBF: Input layer is a set of Poisson generators
         print("Using manual RBF implementation.")
@@ -237,6 +234,7 @@ def run_simulation(
             duration["sim"] / duration["step"] + 1
         )
         params_rb_neuron["sdev"] = rbf_cfg["scale_rate"] * rbf_cfg["width"]
+        params_rb_neuron["max_peak_rate"] = rbf_cfg["scale_rate"] / duration["step"]
         nest.SetStatus(nrns_rb, params_rb_neuron)
 
     # Create recurrent and readout populations
@@ -566,7 +564,7 @@ def run_simulation(
             rbf_inputs_list.append(rbf_inputs_for_sample)
 
         # Stack the RBF inputs from all samples and scale them to get firing rates.
-        rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"]
+        rate_based_rbf_inputs = np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"]
 
         # Tile the signals for all training iterations.
         tiled_rbf_inputs = np.tile(rate_based_rbf_inputs, (n_iter, 1))
@@ -579,7 +577,7 @@ def run_simulation(
         ]
         nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
     else:  # rb_neuron input creation
-        input_spk_rate = rbf_cfg["scale_rate"] * np.concatenate(trajectories)
+        input_spk_rate = np.concatenate(trajectories) * rbf_cfg["scale_rate"]
         input_spk_rate = np.tile(input_spk_rate, n_iter)
         in_rate_times = np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
         nest.SetStatus(
@@ -589,7 +587,7 @@ def run_simulation(
         angle_centers = np.linspace(
             0.0, np.pi, num_centers
         )
-        desired_rates = rbf_cfg["scale_rate"] * angle_centers
+        desired_rates = angle_centers * rbf_cfg["scale_rate"]
         for i, nrn in enumerate(nrns_rb):
             nest.SetStatus(nrn, {"desired": desired_rates[i]})
 
