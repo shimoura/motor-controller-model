@@ -13,6 +13,7 @@ task:
   gradient_batch_size: 1 # Batch size for gradient computation
   n_iter: 100  # Number of training iterations
   sequence: 650.0  # Sequence length (ms)
+  silent_period: 150.0  # Silent period before receiving the trajectory (ms)
 
 # RBF encoding parameters
 rbf:
@@ -47,13 +48,13 @@ neurons:
     tau_m: 20.0  # Membrane time constant (ms)
     V_m: 0.0  # Initial membrane potential (mV)
   rb:
-    kp: 1000.0             # Input gain (1000 ensures correct conversion from spikes/ms to spikes/s)
+    kp: 1000.0         # Input gain (1000 ensures correct conversion from spikes/ms to spikes/s)
     base_rate: 0.0     # Base firing rate in Hz
     buffer_size: 50.0   # Size of the sliding window in ms
 
 # Synapse parameters
 synapses:
-  w_input: 100.0  # Default synaptic weight (pA) - 100 for manual RBF, 200 for rb_neuron
+  w_input: 200.0  # Default synaptic weight (pA)
   w_rec: 10.0  # Recurrent synaptic weight (pA)
   g: 4.0  # Inhibitory/excitatory weight ratio
   conn_bernoulli_p: 0.1  # Connection probability for recurrent connections

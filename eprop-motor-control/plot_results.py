@@ -178,8 +178,8 @@ def plot_spikes_and_dynamics(
 
     # Define the two time windows: pre- and post-training
     xlims_list = [
-        (0, duration["sequence"]),
-        (duration["task"] - duration["sequence"], duration["task"]),
+        (0, duration["total_sequence_with_silence"]),
+        (duration["task"] - duration["total_sequence_with_silence"], duration["task"]),
     ]
     fig, axs = plt.subplots(8, 2, sharex="col", figsize=(6, 12), dpi=300)
 

@@ -172,15 +172,21 @@ def run_simulation(
     sim_cfg = config["simulation"]
     task_cfg = config["task"]
     step_ms = sim_cfg["step"]
-    n_timesteps_per_sequence = int(round(task_cfg["sequence"] / step_ms))
+    silent_period = task_cfg["silent_period"]
 
     # Define the timing structure of the experiment
     duration = {
         "step": step_ms,
-        "sequence": task_cfg["sequence"],
-        "learning_window": task_cfg["sequence"],
-        "extension_sim": step_ms, # Extension time after task ends
+        "sequence": task_cfg["sequence"], # Original active sequence length
+        "silent_period": silent_period, # Duration of silent period
+        "total_sequence_with_silence": task_cfg["sequence"] + silent_period, # Total sequence length
+        "learning_window": task_cfg["sequence"] + silent_period, # Learning window covers total sequence
+        "extension_sim": step_ms,
     }
+
+    # Number of timesteps for the total sequence including silence
+    n_timesteps_per_sequence = int(round(duration["total_sequence_with_silence"] / step_ms))
+
     trajectory_ids_to_use = task_cfg["trajectory_ids_to_use"]
     n_samples_per_trajectory_to_use = int(task_cfg["n_samples_per_trajectory_to_use"])
     n_samples = len(trajectory_ids_to_use) * n_samples_per_trajectory_to_use
@@ -192,7 +198,7 @@ def run_simulation(
     params_setup = {
         "eprop_learning_window": duration["learning_window"],
         "eprop_reset_neurons_on_update": False,
-        "eprop_update_interval": duration["sequence"],
+        "eprop_update_interval": duration["total_sequence_with_silence"],
         "print_time": sim_cfg["print_time"],
         "resolution": duration["step"],
         "total_num_virtual_procs": sim_cfg["total_num_virtual_procs"],
@@ -209,6 +215,9 @@ def run_simulation(
     nrn_cfg = config["neurons"]
     rbf_cfg = config["rbf"]
     num_centers = int(rbf_cfg["num_centers"])
+
+    # adjust the scale rate based on step resolution
+    rbf_cfg["scale_rate"] = rbf_cfg["scale_rate"] / duration["step"]
 
     if use_manual_rbf:
         # Manual RBF: Input layer is a set of Poisson generators
@@ -473,6 +482,10 @@ def run_simulation(
         ]
         assert len(sample_ids) == n_samples
 
+    # Number of timesteps for the active sequence
+    n_timesteps_per_stimulus = int(
+        round(task_cfg["sequence"] / duration["step"])
+    )  
     trajectories, desired_targets_list = [], {"pos": [], "neg": []}
     for idx, sample_id in enumerate(sample_ids):
         # Use custom trajectory file if provided
@@ -488,10 +501,16 @@ def run_simulation(
             len(traj_data) * 0.1,
         )  # 0.1ms is original resolution
         resampled_time = np.linspace(
-            0, orig_dur, n_timesteps_per_sequence, endpoint=False
+            0, orig_dur, n_timesteps_per_stimulus, endpoint=False
         )
         orig_time = np.arange(orig_num_pts) * 0.1
-        trajectories.append(np.interp(resampled_time, orig_time, traj_data))
+        # Resample the trajectory to match the simulation time steps
+        trajectory_signal = np.interp(resampled_time, orig_time, traj_data)
+        # Prepend zeros for the silent period
+        if silent_period > 0:
+            silent_steps = int(silent_period / duration["step"])
+            trajectory_signal = np.concatenate((np.zeros(silent_steps), trajectory_signal))
+        trajectories.append(trajectory_signal)
 
         # Use custom target file if provided
         for i, key in enumerate(["pos", "neg"]):
@@ -506,12 +525,22 @@ def run_simulation(
                 spike_times = training_dataset[sample_id][2 * i + 2]
             target_hist = np.histogram(
                 spike_times,
-                bins=n_timesteps_per_sequence,
+                bins=n_timesteps_per_stimulus,
                 range=(0, duration["sequence"]),
             )[0]
             desired_targets_list[key].append(
                 np.convolve(target_hist, np.ones(20) / 10, mode="same")
             )
+    
+    # Add silent period to each individual target histogram in desired_targets_list
+    if silent_period > 0: # Only add if silent duration is positive
+        for k in desired_targets_list:
+            for i in range(len(desired_targets_list[k])):
+                # Prepend zeros to each target sequence
+                desired_targets_list[k][i] = np.concatenate(
+                    (np.zeros(silent_steps), desired_targets_list[k][i])
+                )
+
 
     # %% ###########################################################################################################
     # Create Input and Output Signals
@@ -633,7 +662,7 @@ def run_simulation(
         events_mm_out["target_signal"],
     )
     error = (readout_signal - target_signal) ** 2
-    loss_indices = np.arange(0, int(duration["task"]), int(duration["sequence"]))
+    loss_indices = np.arange(0, int(duration["task"]), int(duration["total_sequence_with_silence"]))
     loss = 0.5 * np.add.reduceat(error, loss_indices)
 
     # %% ###########################################################################################################
