@@ -617,9 +617,10 @@ def run_simulation(
     # Plotting and Saving
     # ~~~~~~~~~~~~~~~~~~~~~
     # Generate and save plots and simulation results if requested.
+    out_dir = result_dir if result_dir else "."
+
     if plot_results and config.get("plotting", {}).get("do_plotting", True):
         print("Generating and saving plots...")
-        out_dir = result_dir if result_dir else "."
         colors = {"blue": "#1f77b4", "red": "#d62728", "white": "#ffffff"}
         plot_training_error(loss, os.path.join(out_dir, "training_error.png"))
         plot_spikes_and_dynamics(
@@ -649,34 +650,34 @@ def run_simulation(
             os.path.join(out_dir, "weight_matrices.png"),
         )
 
-        if result_dir:
-            import json
+    if result_dir:
+        import json
 
-            def make_json_serializable(obj):
-                if isinstance(obj, dict):
-                    return {k: make_json_serializable(v) for k, v in obj.items()}
-                if isinstance(obj, list):
-                    return [make_json_serializable(i) for i in obj]
-                if isinstance(obj, Path):
-                    return str(obj)
-                if isinstance(obj, (np.ndarray, np.generic)):
-                    return obj.tolist()
-                return obj
+        def make_json_serializable(obj):
+            if isinstance(obj, dict):
+                return {k: make_json_serializable(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [make_json_serializable(i) for i in obj]
+            if isinstance(obj, Path):
+                return str(obj)
+            if isinstance(obj, (np.ndarray, np.generic)):
+                return obj.tolist()
+            return obj
 
-            config_serializable = make_json_serializable(config)
-            config_serializable["model_run_settings"] = {
-                "plastic_input_to_rec": plastic_input_to_rec,
-                "use_manual_rbf": use_manual_rbf,
-            }
-            np.savez(
-                os.path.join(out_dir, "results.npz"),
-                loss=loss,
-                readout_signal=readout_signal,
-                target_signal=target_signal,
-            )
-            with open(os.path.join(out_dir, "config.json"), "w") as f:
-                json.dump(config_serializable, f, indent=2)
-        print(f"Results saved to {out_dir}")
+        config_serializable = make_json_serializable(config)
+        config_serializable["model_run_settings"] = {
+            "plastic_input_to_rec": plastic_input_to_rec,
+            "use_manual_rbf": use_manual_rbf,
+        }
+        np.savez(
+            os.path.join(out_dir, "results.npz"),
+            loss=loss,
+            readout_signal=readout_signal,
+            target_signal=target_signal,
+        )
+        with open(os.path.join(out_dir, "config.json"), "w") as f:
+            json.dump(config_serializable, f, indent=2)
+    print(f"Results saved to {out_dir}")
 
 
 # ---
