@@ -47,7 +47,7 @@ neurons:
     tau_m: 20.0  # Membrane time constant (ms)
     V_m: 0.0  # Initial membrane potential (mV)
   rb:
-    kp: 1000.0             # Input gain
+    kp: 1000.0             # Input gain (1000 ensures correct conversion from spikes/ms to spikes/s)
     base_rate: 0.0     # Base firing rate in Hz
     buffer_size: 50.0   # Size of the sliding window in ms
 
