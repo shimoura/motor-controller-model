@@ -221,21 +221,32 @@ def run_simulation(
         print("Using manual RBF implementation.")
         n_in = num_centers
         gen_poisson_in = nest.Create("inhomogeneous_poisson_generator", n_in)
+
+        if plastic_input_to_rec:
+            # Create parrot neurons to allow plastic connections from input to recurrent neurons
+            parrot_neurons = nest.Create("parrot_neuron", n_in)
     else:
         # Default: Use the custom 'rb_neuron' model for RBF encoding
         print("Using 'rb_neuron' for RBF implementation.")
         nest.Install("motor_neuron_module")
+
+        # Define parameters for the rb_neuron
         params_rb_neuron = nrn_cfg["rb"]
-        n_rb = num_centers
-        gen_poisson_in = nest.Create("inhomogeneous_poisson_generator")
-        nrns_rb = nest.Create("rb_neuron", n_rb)
-        # Configure the rb_neuron population
         params_rb_neuron["simulation_steps"] = int(
             duration["sim"] / duration["step"] + 1
         )
         params_rb_neuron["sdev"] = rbf_cfg["scale_rate"] * rbf_cfg["width"]
         params_rb_neuron["max_peak_rate"] = rbf_cfg["scale_rate"] / duration["step"]
+
+        # Create the input layer as rb_neurons
+        n_rb = num_centers
+        nrns_rb = nest.Create("rb_neuron", n_rb)
+
+        # Set the parameters for the rb_neuron
         nest.SetStatus(nrns_rb, params_rb_neuron)
+
+        # Create Poisson generators for the input layer
+        gen_poisson_in = nest.Create("inhomogeneous_poisson_generator")
 
     # Create recurrent and readout populations
     n_rec = int(nrn_cfg["n_rec"])
@@ -374,8 +385,13 @@ def run_simulation(
             ),
         }
         if plastic_input_to_rec:
+            # Connect Poisson generators to parrot neurons for plastic connections
             nest.Connect(
-                gen_poisson_in, nrns_rec, params_conn_all_to_all, params_syn_rec_exc
+                gen_poisson_in, parrot_neurons, params_conn_one_to_one, params_syn_static
+            )
+            # Connect parrot neurons to recurrent neurons
+            nest.Connect(
+                parrot_neurons, nrns_rec, params_conn_all_to_all, params_syn_rec_exc
             )
         else:
             for i, poisson_node in enumerate(gen_poisson_in):
@@ -395,7 +411,8 @@ def run_simulation(
                     params_conn_all_to_all,
                     params_syn_input,
                 )
-    else:  # rb_neuron connectivity
+    else:
+        # rb_neuron connectivity
         params_syn_input_to_rb = {
             "synapse_model": "static_synapse",
             "delay": duration["step"],
@@ -853,6 +870,13 @@ if __name__ == "__main__":
             folder_name = "_".join(
                 f"{k.replace('.', '_')}_{v}" for k, v in param_dict.items()
             )
+            # Add learning rates to folder name if present
+            lr_exc = param_dict.get('learning_rate_exc') or base_kwargs.get('learning_rate_exc')
+            lr_inh = param_dict.get('learning_rate_inh') or base_kwargs.get('learning_rate_inh')
+            if lr_exc is not None:
+                folder_name += f"_lr_exc_{lr_exc}"
+            if lr_inh is not None and lr_inh != lr_exc:
+                folder_name += f"_lr_inh_{lr_inh}"
             folder_name += (
                 f"_plastic_{args.plastic_input_to_rec}_manualRBF_{args.use_manual_rbf}"
             )
@@ -863,6 +887,13 @@ if __name__ == "__main__":
         print("\n--- Parameter Scan Finished ---")
     else:
         folder_name = f"default_plastic_{args.plastic_input_to_rec}_manualRBF_{args.use_manual_rbf}"
+        # Add learning rates to folder name if present
+        lr_exc = base_kwargs.get('learning_rate_exc')
+        lr_inh = base_kwargs.get('learning_rate_inh')
+        if lr_exc is not None:
+            folder_name += f"_lr_exc_{lr_exc}"
+        if lr_inh is not None and lr_inh != lr_exc:
+            folder_name += f"_lr_inh_{lr_inh}"
         sim_dir = os.path.join(results_dir, folder_name)
         os.makedirs(sim_dir, exist_ok=True)
         print("--- Running Single Default Scenario ---")

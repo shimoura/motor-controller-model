@@ -9,3 +9,9 @@
 python eprop-reaching-task.py --use-manual-rbf
 wait
 python eprop-reaching-task.py
+
+wait
+
+python eprop-reaching-task.py --use-manual-rbf --plastic-input-to-rec --learning-rate 0.1
+wait
+python eprop-reaching-task.py --plastic-input-to-rec --learning-rate 0.1
