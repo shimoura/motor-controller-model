@@ -6,12 +6,16 @@
 #   --use-manual-rbf \
 # #   --no-plot
 
-python eprop-reaching-task.py --use-manual-rbf
-wait
-python eprop-reaching-task.py
+# python eprop-reaching-task.py --use-manual-rbf
+# wait
+# python eprop-reaching-task.py
 
-wait
+# wait
 
-python eprop-reaching-task.py --use-manual-rbf --plastic-input-to-rec --learning-rate 0.1
+# python eprop-reaching-task.py --use-manual-rbf --plastic-input-to-rec --learning-rate 0.1
+# wait
+# python eprop-reaching-task.py --plastic-input-to-rec --learning-rate 0.1
+
+python eprop-reaching-task.py --use-manual-rbf --scan-param neurons.n_rec,rbf.num_centers --scan-values "200;15,20"
 wait
-python eprop-reaching-task.py --plastic-input-to-rec --learning-rate 0.1
+python eprop-reaching-task.py --scan-param neurons.n_rec,rbf.num_centers --scan-values "200;15,20"

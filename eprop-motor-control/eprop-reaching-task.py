@@ -862,7 +862,12 @@ if __name__ == "__main__":
             scan_values.append(vals)
 
     # Execute simulation runs
-    if scan_params and scan_values and len(scan_params) == len(scan_values):
+    if scan_params and scan_values:
+        if len(scan_params) != len(scan_values):
+            print(f"ERROR: Number of scan parameters ({len(scan_params)}) does not match number of scan value lists ({len(scan_values)}).\n"
+                  f"Each parameter must have a corresponding list of values.\n"
+                  f"Example: --scan-param a,b --scan-values '1,2;3,4' for a=[1,2], b=[3,4]")
+            exit(1)
         print(f"--- Starting Parameter Scan ---")
         for combo in itertools.product(*scan_values):
             param_dict = dict(zip(scan_params, combo))
