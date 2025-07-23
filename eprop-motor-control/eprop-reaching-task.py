@@ -104,6 +104,8 @@ def run_simulation(
     plot_results=True,
     plastic_input_to_rec=False,
     use_manual_rbf=False,
+    trajectory_files=None,
+    target_files=None,
     **override_kwargs,
 ):
     """
@@ -120,6 +122,8 @@ def run_simulation(
         plot_results (bool): Whether to generate and save plots.
         plastic_input_to_rec (bool): If True, make input-to-recurrent connections plastic.
         use_manual_rbf (bool): If True, use manual RBF implementation instead of rb_neuron.
+        trajectory_files (list of str, optional): List of custom trajectory file paths to use.
+        target_files (list of str, optional): List of custom target file paths to use.
         override_kwargs (dict): Other config overrides using dot notation (e.g., 'rbf.num_centers').
     """
     # %% ###########################################################################################################
@@ -450,24 +454,35 @@ def run_simulation(
     # Load and Prepare Data
     # ~~~~~~~~~~~~~~~~~~~~~~~
     # Load the trajectory and target spike data, then resample and process it.
-    dataset_path = (
-        Path(__file__).resolve().parent.parent
-        / "dataset_motor_training"
-        / "dataset_spikes.gdf"
-    )
-    training_dataset = load_data_file(str(dataset_path))
-    sample_ids = [
-        tid * task_cfg["samples_per_trajectory_in_dataset"] + j
-        for tid in trajectory_ids_to_use
-        for j in range(n_samples_per_trajectory_to_use)
-    ]
-    assert len(sample_ids) == n_samples
+    if trajectory_files is not None and len(trajectory_files) > 0:
+        n_samples = len(trajectory_files)
+        sample_ids = list(range(n_samples))
+        training_dataset = None
+        dataset_path = None
+    else:
+        dataset_path = (
+            Path(__file__).resolve().parent.parent
+            / "dataset_motor_training"
+            / "dataset_spikes.gdf"
+        )
+        training_dataset = load_data_file(str(dataset_path))
+        sample_ids = [
+            tid * task_cfg["samples_per_trajectory_in_dataset"] + j
+            for tid in trajectory_ids_to_use
+            for j in range(n_samples_per_trajectory_to_use)
+        ]
+        assert len(sample_ids) == n_samples
 
     trajectories, desired_targets_list = [], {"pos": [], "neg": []}
-    for sample_id in sample_ids:
-        traj_num = int(training_dataset[sample_id][0][0])
-        traj_file = dataset_path.parent / f"trajectory{traj_num}.txt"
-        traj_data = np.loadtxt(traj_file)
+    for idx, sample_id in enumerate(sample_ids):
+        # Use custom trajectory file if provided
+        if trajectory_files is not None and len(trajectory_files) > 0:
+            traj_file = Path(trajectory_files[idx % len(trajectory_files)])
+            traj_data = np.loadtxt(traj_file)
+        else:
+            traj_num = int(training_dataset[sample_id][0][0])
+            traj_file = dataset_path.parent / f"trajectory{traj_num}.txt"
+            traj_data = np.loadtxt(traj_file)
         orig_num_pts, orig_dur = (
             len(traj_data),
             len(traj_data) * 0.1,
@@ -478,9 +493,17 @@ def run_simulation(
         orig_time = np.arange(orig_num_pts) * 0.1
         trajectories.append(np.interp(resampled_time, orig_time, traj_data))
 
-        # Process target spike times into smoothed rates
+        # Use custom target file if provided
         for i, key in enumerate(["pos", "neg"]):
-            spike_times = training_dataset[sample_id][2 * i + 2]
+            if target_files is not None and idx < len(target_files):
+                # Custom file: each row neuron_id,spike_time (comma or whitespace separated)
+                arr = np.loadtxt(target_files[idx], delimiter="," if "," in open(target_files[idx]).readline() else None)
+                if key == "pos":
+                    spike_times = arr[arr[:, 0] <= 50][:, 1]
+                else:
+                    spike_times = arr[arr[:, 0] > 50][:, 1]
+            else:
+                spike_times = training_dataset[sample_id][2 * i + 2]
             target_hist = np.histogram(
                 spike_times,
                 bins=n_timesteps_per_sequence,
@@ -746,16 +769,37 @@ if __name__ == "__main__":
         action="store_true",
         help="Use manual RBF implementation instead of the default 'rb_neuron' model.",
     )
+    parser.add_argument(
+        "--trajectory-files",
+        type=str,
+        default=None,
+        help="Comma-separated list of custom trajectory file paths to use instead of defaults.",
+    )
+    parser.add_argument(
+        "--target-files",
+        type=str,
+        default=None,
+        help="Comma-separated list of custom target file paths to use instead of defaults.",
+    )
     args = parser.parse_args()
 
     # Prepare for single run or parameter scan
     results_dir = os.path.join(os.path.dirname(__file__), "sim_results")
     os.makedirs(results_dir, exist_ok=True)
 
+    # Parse custom file arguments
+    trajectory_files = (
+        args.trajectory_files.split(",") if args.trajectory_files else None
+    )
+    target_files = (
+        args.target_files.split(",") if args.target_files else None
+    )
     base_kwargs = {
         "plot_results": not args.no_plot,
         "plastic_input_to_rec": args.plastic_input_to_rec,
         "use_manual_rbf": args.use_manual_rbf,
+        "trajectory_files": trajectory_files,
+        "target_files": target_files,
     }
     if args.learning_rate is not None:
         base_kwargs["learning_rate_exc"] = args.learning_rate
