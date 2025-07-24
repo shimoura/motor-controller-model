@@ -704,6 +704,15 @@ def run_simulation(
     # Generate and save plots and simulation results if requested.
     out_dir = result_dir if result_dir else "."
 
+    # Save the final weights after training
+    print("Saving trained weights...")
+    np.savez(
+        os.path.join(out_dir, "trained_weights.npz"),
+        rec_rec=weights_post_train["rec_rec"]["weight_matrix"],
+        rec_out=weights_post_train["rec_out"]["weight_matrix"],
+    )
+    print("Trained weights saved.")
+
     if plot_results and config.get("plotting", {}).get("do_plotting", True):
         print("Generating and saving plots...")
         colors = {"blue": "#1f77b4", "red": "#d62728", "white": "#ffffff"}
