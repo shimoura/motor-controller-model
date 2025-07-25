@@ -76,9 +76,10 @@ weights_path = (
 if not weights_path.exists():
     raise FileNotFoundError(f"Trained weights file not found: {weights_path}")
 
-weights = np.load(weights_path)
-rec_rec_weights = weights.get("rec_rec")
-rec_out_weights = weights.get("rec_out")
+weights = np.load(weights_path, allow_pickle=True)
+rec_rec_weights = weights.get("rec_rec").item() # Store recurrent network weights as a dictionary
+rec_out_weights = weights.get("rec_out").item() # Store rec to out weights as a dictionary
+rb_rec_weights = weights.get("rb_rec").item()   # Store input to rec weights as a dictionary
 
 if rec_rec_weights is None or rec_out_weights is None:
     raise KeyError("Missing 'rec_rec' or 'rec_out' arrays in trained_weights.npz")
@@ -168,79 +169,55 @@ params_conn_all_to_all = {"rule": "all_to_all", "allow_autapses": False}
 params_conn_one_to_one = {"rule": "one_to_one", "allow_autapses": False}
 params_syn_static = {"synapse_model": "static_synapse", "weight": 1.0, "delay": step_ms}
 
-# Load trained input weights if present
-rb_rec_weights = weights.get("rb_rec")  # shape: (n_rec, n_rb) if present
-
 # Poisson generator to rb_neuron
 nest.Connect(gen_poisson_in, nrns_rb, params_conn_all_to_all, params_syn_static)
 
-exc_ratio = float(config["neurons"]["exc_ratio"])
-n_rec_exc = int(n_rec * exc_ratio)
-n_rec_inh = n_rec - n_rec_exc
-nrns_rec_exc = nrns_rec[:n_rec_exc]
-nrns_rec_inh = nrns_rec[n_rec_exc:]
+# Get source and target neuron IDs 
+nrns_rb_ids = rb_rec_weights["source"] + min(nrns_rb.tolist())
+nrns_rec_ids = rb_rec_weights["target"] + min(nrns_rec.tolist())
 
-for i, rb in enumerate(nrns_rb):
-    exc_start = int(i * n_rec_exc / num_centers)
-    exc_end = int((i + 1) * n_rec_exc / num_centers)
-    inh_start = int(i * n_rec_inh / num_centers)
-    inh_end = int((i + 1) * n_rec_inh / num_centers)
-    group_exc = nrns_rec_exc[exc_start:exc_end]
-    group_inh = nrns_rec_inh[inh_start:inh_end]
-
-    # Use trained input weights
-    weights_exc = rb_rec_weights[exc_start:exc_end, i]
-    nest.Connect(
-        rb.tolist() * len(group_exc),
-        group_exc,
-        params_conn_one_to_one,
-        {
-            "synapse_model": "static_synapse",
-            "weight": weights_exc,
-            "delay": [step_ms] * len(group_exc),
-        },
-    )
-    weights_inh = rb_rec_weights[n_rec_exc + inh_start : n_rec_exc + inh_end, i]
-    nest.Connect(
-        rb.tolist() * len(group_inh),
-        group_inh,
-        params_conn_one_to_one,
-        {
-            "synapse_model": "static_synapse",
-            "weight": weights_inh,
-            "delay": [step_ms] * len(group_inh),
-        },
-    )
+nest.Connect(
+    nrns_rb_ids,
+    nrns_rec_ids,
+    params_conn_one_to_one,
+    {
+        "synapse_model": "static_synapse",
+        "weight": rb_rec_weights["weight"],
+        "delay": [step_ms] * len(rb_rec_weights["weight"]),
+    },
+)
 
 # --------------------------------------------------------------------------------------
 # Connect recurrent and output neurons using loaded weights
 # --------------------------------------------------------------------------------------
 
 # Connect rec to rec with trained weights
-for i, pre in enumerate(nrns_rec):
-    for j, post in enumerate(nrns_rec):
-        nest.Connect(
-            pre,
-            post,
-            syn_spec={
-                "synapse_model": "static_synapse",
-                "weight": rec_rec_weights[j, i],
-                "delay": step_ms,
-            },
-        )
+rec_source_ids = rec_rec_weights["source"] + min(nrns_rec.tolist())
+rec_target_ids = rec_rec_weights["target"] + min(nrns_rec.tolist())
+nest.Connect(
+    rec_source_ids,
+    rec_target_ids,
+    params_conn_one_to_one,
+    syn_spec={
+        "synapse_model": "static_synapse",
+        "weight": rec_rec_weights["weight"],
+        "delay": [step_ms] * len(rec_rec_weights["weight"]),
+    },
+)
 
 # Connect rec to out with trained weights
-for i, pre in enumerate(nrns_rec):
-    for j, post in enumerate(nrns_out):
-        nest.Connect(
-            pre,
-            post,
-            syn_spec={
-                "synapse_model": "static_synapse",
-                "weight": rec_out_weights[j, i],
-                "delay": step_ms,
-            },
-        )
+nrns_rec_ids = rec_out_weights["source"] + min(nrns_rec.tolist())
+nrns_out_ids = rec_out_weights["target"] + min(nrns_out.tolist())
+nest.Connect(
+    nrns_rec_ids,
+    nrns_out_ids,
+    params_conn_one_to_one,
+    syn_spec={
+        "synapse_model": "static_synapse",
+        "weight": rec_out_weights["weight"],
+        "delay": [step_ms] * len(rec_out_weights["weight"]),
+    },
+)
 
 # --------------------------------------------------------------------------------------
 # Record spikes and run simulation
@@ -296,27 +273,43 @@ colors = {"blue": "#1f77b4", "red": "#d62728", "white": "#ffffff"}
 cmap = mpl.colors.LinearSegmentedColormap.from_list(
     "cmap", ((0.0, colors["red"]), (0.5, colors["white"]), (1.0, colors["blue"]))
 )
+
+# Convert loaded weights from dict to matrix for plotting
+def dict_to_matrix(weights_dict, n_pre, n_post):
+    mat = np.zeros((n_post, n_pre))
+    src = np.array(weights_dict["source"])
+    tgt = np.array(weights_dict["target"])
+    w = np.array(weights_dict["weight"])
+    src -= src.min()
+    tgt -= tgt.min()
+    mat[tgt, src] = w
+    return mat
+
+rec_rec_weights_mat = dict_to_matrix(rec_rec_weights, n_rec, n_rec)
+rec_out_weights_mat = dict_to_matrix(rec_out_weights, n_rec, n_out)
+rb_rec_weights_mat = dict_to_matrix(rb_rec_weights, n_rb, n_rec)
+
 vmin = min(
-    np.min(rec_rec_weights),
-    np.min(rec_out_weights),
+    np.min(rec_rec_weights_mat),
+    np.min(rec_out_weights_mat),
     np.min(rec_rec_weights_extracted),
     np.min(rec_out_weights_extracted),
 )
 vmax = max(
-    np.max(rec_rec_weights),
-    np.max(rec_out_weights),
+    np.max(rec_rec_weights_mat),
+    np.max(rec_out_weights_mat),
     np.max(rec_rec_weights_extracted),
     np.max(rec_out_weights_extracted),
 )
 norm = mpl.colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
 
 fig, axs = plt.subplots(2, 2, figsize=(14, 10))
-pc0 = axs[0, 0].pcolormesh(rec_rec_weights, cmap=cmap, norm=norm)
+pc0 = axs[0, 0].pcolormesh(rec_rec_weights_mat, cmap=cmap, norm=norm)
 axs[0, 0].set_title("Loaded rec_rec weights")
 axs[0, 0].set_xlabel("Presynaptic neuron")
 axs[0, 0].set_ylabel("Postsynaptic neuron")
 plt.colorbar(pc0, ax=axs[0, 0])
-pc1 = axs[0, 1].pcolormesh(rec_out_weights, cmap=cmap, norm=norm)
+pc1 = axs[0, 1].pcolormesh(rec_out_weights_mat, cmap=cmap, norm=norm)
 axs[0, 1].set_title("Loaded rec_out weights")
 axs[0, 1].set_xlabel("Presynaptic neuron")
 axs[0, 1].set_ylabel("Postsynaptic neuron")
@@ -341,7 +334,7 @@ vmin_rb = -np.max(rb_rec_weights_extracted)
 vmax_rb = np.max(rb_rec_weights_extracted)
 norm_rb = mpl.colors.TwoSlopeNorm(vmin=vmin_rb, vcenter=0, vmax=vmax_rb)
 if rb_rec_weights is not None:
-    pc_rb_loaded = axs_rbrec[0].pcolormesh(rb_rec_weights, cmap=cmap, norm=norm_rb)
+    pc_rb_loaded = axs_rbrec[0].pcolormesh(rb_rec_weights_mat, cmap=cmap, norm=norm_rb)
     axs_rbrec[0].set_title("Loaded rb_rec weights (input to recurrent)")
     axs_rbrec[0].set_xlabel("Input neuron (rb_neuron)")
     axs_rbrec[0].set_ylabel("Recurrent neuron")

@@ -633,12 +633,12 @@ def run_simulation(
         conns = nest.GetConnections(pop_pre, pop_post).get(
             ["source", "target", "weight"]
         )
-        if not conns["source"]:
-            return {"weight_matrix": np.zeros((len(pop_post), len(pop_pre)))}
-        conns["senders"] = np.array(conns["source"]) - np.min(conns["source"])
-        conns["targets"] = np.array(conns["target"]) - np.min(conns["target"])
-        conns["weight_matrix"] = np.zeros((len(pop_post), len(pop_pre)))
-        conns["weight_matrix"][conns["targets"], conns["senders"]] = conns["weight"]
+        conns["source"] = conns["source"] - np.min(conns["source"])
+        conns["target"] = conns["target"] - np.min(conns["target"])
+        
+        conns["len_source"] = len(pop_pre)
+        conns["len_target"] = len(pop_post)
+
         return conns
 
     weights_pre_train = {
@@ -694,9 +694,9 @@ def run_simulation(
     print("Saving trained weights...")
     np.savez(
         os.path.join(out_dir, "trained_weights.npz"),
-        rec_rec=weights_post_train["rec_rec"]["weight_matrix"],
-        rec_out=weights_post_train["rec_out"]["weight_matrix"],
-        rb_rec=weights_post_train["rb_rec"]["weight_matrix"],
+        rec_rec=weights_post_train["rec_rec"],
+        rec_out=weights_post_train["rec_out"],
+        rb_rec=weights_post_train["rb_rec"],
     )
     print("Trained weights saved.")
 
