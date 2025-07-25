@@ -20,6 +20,7 @@ rbf:
   num_centers: 10  # Number of RBF centers for input encoding
   scale_rate: 500.0  # RBF output scaling factor (Hz)
   width: 0.25  # RBF width in rad (standard deviation)
+  shift_min_rate: 0.0  # Minimum rate shift for RBF output (Hz)
 
 # Neuron parameters
 neurons:
@@ -55,7 +56,7 @@ neurons:
 # Synapse parameters
 synapses:
   w_input: 200.0  # Default synaptic weight (pA)
-  w_rec: 10.0  # Recurrent synaptic weight (pA)
+  w_rec: 50.0  # Recurrent synaptic weight (pA)
   g: 4.0  # Inhibitory/excitatory weight ratio
   conn_bernoulli_p: 0.1  # Connection probability for recurrent connections
   average_gradient: false  # Average gradient across batch (true/false)

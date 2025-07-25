@@ -440,11 +440,11 @@ def run_simulation(
 
     # Connect recurrent neurons to readout neurons
     nest.Connect(nrns_rec_exc, nrns_out, params_conn_all_to_all, params_syn_rec_exc)
-    nest.Connect(nrns_rec_inh, nrns_out, params_conn_all_to_all, params_syn_rec_inh)
+    # nest.Connect(nrns_rec_inh, nrns_out, params_conn_all_to_all, params_syn_rec_inh)
 
     # Connect readout neurons to the target signal generator
     nest.Connect(nrns_out, nrns_rec_exc, params_conn_all_to_all, params_syn_feedback)
-    nest.Connect(nrns_out, nrns_rec_inh, params_conn_all_to_all, params_syn_feedback)
+    # nest.Connect(nrns_out, nrns_rec_inh, params_conn_all_to_all, params_syn_feedback)
 
     # Connect the target signal generators to the readout neurons
     nest.Connect(
@@ -504,12 +504,6 @@ def run_simulation(
         orig_time = np.arange(orig_num_pts) * 0.1
         # Resample the trajectory to match the simulation time steps
         trajectory_signal = np.interp(resampled_time, orig_time, traj_data)
-        # Prepend zeros for the silent period
-        if silent_period > 0:
-            silent_steps = int(silent_period / duration["step"])
-            trajectory_signal = np.concatenate(
-                (np.zeros(silent_steps), trajectory_signal)
-            )
         trajectories.append(trajectory_signal)
 
         # Use custom target file if provided
@@ -539,6 +533,7 @@ def run_simulation(
 
     # Add silent period to each individual target histogram in desired_targets_list
     if silent_period > 0:  # Only add if silent duration is positive
+        silent_steps = int(silent_period / duration["step"])
         for k in desired_targets_list:
             for i in range(len(desired_targets_list[k])):
                 # Prepend zeros to each target sequence
@@ -550,6 +545,8 @@ def run_simulation(
     # Create Input and Output Signals
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Convert the processed data into timed rate signals for the NEST generators.
+    shift_min_rate = rbf_cfg["shift_min_rate"]
+
     if use_manual_rbf:
 
         def gaussian_rbf(x, center, width):
@@ -562,7 +559,7 @@ def run_simulation(
         centers = np.linspace(0.0, np.pi, num_centers)
         rbf_inputs_list = []
         for trajectory_sample in trajectories:
-            rbf_inputs_for_sample = np.zeros((n_timesteps_per_sequence, num_centers))
+            rbf_inputs_for_sample = np.zeros((n_timesteps_per_stimulus, num_centers))
             for i, center in enumerate(centers):
                 rbf_inputs_for_sample[:, i] = gaussian_rbf(
                     trajectory_sample, center, width
@@ -571,8 +568,17 @@ def run_simulation(
 
         # Stack the RBF inputs from all samples and scale them to get firing rates.
         rate_based_rbf_inputs = (
-            np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"]
+            np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"] + shift_min_rate
         )
+
+        # Prepend zeros for the silent period to the rate signals
+        if silent_period > 0:
+            silent_steps = int(silent_period / duration["step"])
+            zeros = np.zeros((silent_steps, num_centers))
+            rate_based_rbf_inputs = np.vstack([
+                zeros,
+                rate_based_rbf_inputs
+            ])
 
         # Tile the signals for all training iterations.
         tiled_rbf_inputs = np.tile(rate_based_rbf_inputs, (n_iter, 1))
@@ -587,7 +593,15 @@ def run_simulation(
         ]
         nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
     else:  # rb_neuron input creation
-        input_spk_rate = np.concatenate(trajectories) * rbf_cfg["scale_rate"]
+        input_spk_rate = np.concatenate(trajectories) * rbf_cfg["scale_rate"] + shift_min_rate
+        # Prepend zeros for the silent period to the rate signal
+        if silent_period > 0:
+            silent_steps = int(silent_period / duration["step"])
+            input_spk_rate = np.concatenate([
+                np.zeros(silent_steps),
+                input_spk_rate
+            ])
+
         input_spk_rate = np.tile(input_spk_rate, n_iter)
         in_rate_times = (
             np.arange(len(input_spk_rate)) * duration["step"] + duration["step"]
@@ -597,7 +611,9 @@ def run_simulation(
         )
         # Set the desired center for each rb_neuron's receptive field
         angle_centers = np.linspace(0.0, np.pi, num_centers)
-        desired_rates = angle_centers * rbf_cfg["scale_rate"]
+        desired_rates = angle_centers * rbf_cfg["scale_rate"] + shift_min_rate
+        print(f"Setting desired rates for rb_neurons: {desired_rates}")
+        print(params_rb_neuron)
         for i, nrn in enumerate(nrns_rb):
             nest.SetStatus(nrn, {"desired": desired_rates[i]})
 

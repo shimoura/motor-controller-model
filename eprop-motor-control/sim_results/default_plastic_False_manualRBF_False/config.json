@@ -19,7 +19,8 @@
   "rbf": {
     "num_centers": 10,
     "scale_rate": 500.0,
-    "width": 0.25
+    "width": 0.25,
+    "shift_min_rate": 0.0
   },
   "neurons": {
     "n_rec": 100,
@@ -59,7 +60,7 @@
   },
   "synapses": {
     "w_input": 200.0,
-    "w_rec": 10.0,
+    "w_rec": 50.0,
     "g": 4.0,
     "conn_bernoulli_p": 0.1,
     "average_gradient": false,
