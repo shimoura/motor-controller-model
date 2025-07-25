@@ -1,28 +1,4 @@
-# -*- coding: utf-8 -*-
-#
-# eprop_reaching_task.py
-#
-# This file is part of NEST.
-#
-# Copyright (C) 2004 The NEST Initiative
-#
-# NEST is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 2 of the License, or
-# (at your option) any later version.
-#
-# NEST is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with NEST.  If not, see <http://www.gnu.org/licenses/>.
-
 r"""
-Tutorial on learning to perform a reaching task with e-prop
------------------------------------------------------------
-
 Training a regression model using supervised e-prop plasticity to perform a reaching task.
 
 Description
@@ -50,6 +26,8 @@ This script includes two methods for encoding the input trajectory:
     encoding internally. This is the default and recommended method.
 2.  **Manual RBF**: A manual implementation where RBF activation is calculated in NumPy
     and fed to Poisson generators. This can be enabled with the `--use-manual-rbf` flag.
+
+Author: Renan Oliveira Shimoura    
 
 References
 ~~~~~~~~~~
@@ -679,6 +657,14 @@ def run_simulation(
     weights_post_train = {
         "rec_rec": get_weights(nrns_rec, nrns_rec),
         "rec_out": get_weights(nrns_rec, nrns_out),
+        "rb_rec": get_weights(
+            (
+                nrns_rb
+                if not use_manual_rbf
+                else (parrot_neurons if plastic_input_to_rec else gen_poisson_in)
+            ),
+            nrns_rec,
+        ),
     }
     events_mm_rec, events_mm_out, events_sr, events_wr = (
         mm_rec.get("events"),
@@ -710,6 +696,7 @@ def run_simulation(
         os.path.join(out_dir, "trained_weights.npz"),
         rec_rec=weights_post_train["rec_rec"]["weight_matrix"],
         rec_out=weights_post_train["rec_out"]["weight_matrix"],
+        rb_rec=weights_post_train["rb_rec"]["weight_matrix"],
     )
     print("Trained weights saved.")
 
