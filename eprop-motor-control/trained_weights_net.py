@@ -150,9 +150,13 @@ desired_rates = angle_centers * scale_rate
 for i, nrn in enumerate(nrns_rb):
     nest.SetStatus(nrn, {"desired": desired_rates[i]})
 
+# Create recurrent and output neuron populations
+params_nrn_rec = config["neurons"]["rec"]
+params_nrn_out = config["neurons"]["out"]
+
 gen_poisson_in = nest.Create("inhomogeneous_poisson_generator")
-nrns_rec = nest.Create("eprop_iaf_bsshslm_2020", n_rec)
-nrns_out = nest.Create("eprop_readout_bsshslm_2020", n_out)
+nrns_rec = nest.Create("eprop_iaf_bsshslm_2020", n_rec, params_nrn_rec)
+nrns_out = nest.Create("eprop_readout_bsshslm_2020", n_out, params_nrn_out)
 spike_recorder = nest.Create("spike_recorder")
 spike_recorder_rb = nest.Create("spike_recorder")  # Recorder for input neurons
 
