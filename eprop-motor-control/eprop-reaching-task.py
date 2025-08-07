@@ -701,8 +701,6 @@ def run_simulation(
         loss_list.append(0.5 * np.add.reduceat(error, np.arange(0, int(duration["task"]), int(duration["sequence"]))))
 
     loss = np.sum(loss_list, axis=0)
-    # print last 10 values of loss
-    print(f"Final loss values: {loss[-10:]}")
 
     # %% ###########################################################################################################
     # Plotting and Saving
