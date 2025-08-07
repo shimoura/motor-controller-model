@@ -342,8 +342,9 @@ def plot_weight_time_courses(
                     weights_pre_train[label]["target"] == target
                 )
                 # If the weight exists in pre_train, plot it
-                if np.any(idc_syn_pre):
-                    initial_weight = weights_pre_train[label]["weight"][idc_syn_pre][0]
+                indices = np.where(idc_syn_pre)[0]
+                if indices.size > 0:
+                    initial_weight = weights_pre_train[label]["weight"][indices[0]]
                 else:
                     initial_weight = np.nan
                 times = [0.0] + events["times"][idc_syn].tolist()

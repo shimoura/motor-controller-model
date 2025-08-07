@@ -955,16 +955,28 @@ if __name__ == "__main__":
         for combo in itertools.product(*scan_values):
             param_dict = dict(zip(scan_params, combo))
             scenario_kwargs = {**base_kwargs, **param_dict}
+
+            # Map 'learning_rate' to both exc and inh if present
+            if "learning_rate" in scenario_kwargs:
+                scenario_kwargs["learning_rate_exc"] = scenario_kwargs["learning_rate"]
+                scenario_kwargs["learning_rate_inh"] = scenario_kwargs["learning_rate"]
+            # If only one of exc/inh is present, set only that one
+            if "learning_rate_exc" in scenario_kwargs:
+                scenario_kwargs["learning_rate_exc"] = scenario_kwargs["learning_rate_exc"]
+            if "learning_rate_inh" in scenario_kwargs:
+                scenario_kwargs["learning_rate_inh"] = scenario_kwargs["learning_rate_inh"]
+            # If not present in scan, use base_kwargs
+            if "learning_rate_exc" not in scenario_kwargs and base_kwargs.get("learning_rate_exc") is not None:
+                scenario_kwargs["learning_rate_exc"] = base_kwargs["learning_rate_exc"]
+            if "learning_rate_inh" not in scenario_kwargs and base_kwargs.get("learning_rate_inh") is not None:
+                scenario_kwargs["learning_rate_inh"] = base_kwargs["learning_rate_inh"]
+
             folder_name = "_".join(
                 f"{k.replace('.', '_')}_{v}" for k, v in param_dict.items()
             )
             # Add learning rates to folder name if present
-            lr_exc = param_dict.get("learning_rate_exc") or base_kwargs.get(
-                "learning_rate_exc"
-            )
-            lr_inh = param_dict.get("learning_rate_inh") or base_kwargs.get(
-                "learning_rate_inh"
-            )
+            lr_exc = scenario_kwargs.get("learning_rate_exc")
+            lr_inh = scenario_kwargs.get("learning_rate_inh")
             if lr_exc is not None:
                 folder_name += f"_lr_exc_{lr_exc}"
             if lr_inh is not None and lr_inh != lr_exc:
