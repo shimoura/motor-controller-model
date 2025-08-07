@@ -69,10 +69,9 @@ def plot_all_loss_curves(
 
     plt.figure(figsize=(12, 8))
     for label, _, loss in metrics:
-        # Plot all but the last point to avoid the artifact
         if len(loss) > 1:
             x_values = np.arange(1, len(loss))
-            plt.plot(x_values, loss[:-1], label=label)
+            plt.plot(x_values, loss, label=label)
 
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
@@ -103,7 +102,7 @@ def plot_training_error(loss, out_path, x=None, xlabel="training iteration"):
         x = x[:minlen]
         loss = loss[:minlen]
     fig, ax = plt.subplots(figsize=(4, 3))  # Changed figure size here
-    ax.plot(x[:-1], loss[:-1])
+    ax.plot(x, loss)
     ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} (y_k^t -y_k^{*,t})^2$")
     ax.set_xlabel(xlabel)
 

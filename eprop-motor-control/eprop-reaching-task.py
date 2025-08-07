@@ -690,15 +690,19 @@ def run_simulation(
     )
 
     # Evaluate training error (loss)
-    readout_signal, target_signal = (
-        events_mm_out["readout_signal"],
-        events_mm_out["target_signal"],
-    )
-    error = (readout_signal - target_signal) ** 2
-    loss_indices = np.arange(
-        0, int(duration["task"]), int(duration["total_sequence_with_silence"])
-    )
-    loss = 0.5 * np.add.reduceat(error, loss_indices)
+    readout_signal = events_mm_out["readout_signal"]
+    target_signal = events_mm_out["target_signal"]
+    senders = events_mm_out["senders"]
+
+    loss_list = []
+    for sender in set(senders):
+        idc = senders == sender
+        error = (readout_signal[idc] - target_signal[idc]) ** 2
+        loss_list.append(0.5 * np.add.reduceat(error, np.arange(0, int(duration["task"]), int(duration["sequence"]))))
+
+    loss = np.sum(loss_list, axis=0)
+    # print last 10 values of loss
+    print(f"Final loss values: {loss[-10:]}")
 
     # %% ###########################################################################################################
     # Plotting and Saving
@@ -792,7 +796,12 @@ def collect_scan_results(results_dir, output_csv="scan_summary.csv"):
             with open(config_path) as f:
                 config = json.load(f)
             loss = np.load(results_path)["loss"]
-            final_loss = float(loss[-1]) if len(loss) > 0 else None
+            # Take the mean of the last 10 loss values (or fewer if not enough)
+            if len(loss) > 0:
+                n_last = min(10, len(loss))
+                final_loss = float(np.mean(loss[-n_last:]))
+            else:
+                final_loss = None
             # Flatten top-level config keys and model_run_settings
             row = {**config.get("model_run_settings", {})}
             # Add all top-level keys except large dicts
