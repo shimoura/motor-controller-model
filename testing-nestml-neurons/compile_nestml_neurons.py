@@ -1,15 +1,17 @@
 # Generate NEST target code from NESTML files
 
-from pynestml.codegeneration.nest_code_generator_utils import NESTCodeGeneratorUtils
+from pynestml.frontend.pynestml_frontend import generate_nest_target
 
-nestml_neuron_path = "../nestml-neurons/controller_module.nestml"
-nestml_target_path = "../nestml-neurons/nestml_target/"
+nestml_file_path = "../nestml-neurons"
+nestml_target_path = nestml_file_path + "/nestml_target/"
+nestml_install_path = nestml_file_path + "/nestml_install/"
 
-print(f"Generating NEST target code from {nestml_neuron_path} to {nestml_target_path}")
+print(f"Generating NEST target code from {nestml_file_path} to {nestml_target_path}")
 
-NESTCodeGeneratorUtils.generate_code_for(
-    nestml_neuron_model=str(nestml_neuron_path),
+generate_nest_target(
+    input_path=str(nestml_file_path),
     target_path=str(nestml_target_path),
+    install_path=str(nestml_install_path),
     module_name="motor_neuron_module",
 )
 
