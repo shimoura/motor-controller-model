@@ -1,7 +1,6 @@
 # Generate NEST target code from NESTML files
 
 from pynestml.codegeneration.nest_code_generator_utils import NESTCodeGeneratorUtils
-from pathlib import Path
 
 nestml_neuron_path = "../nestml-neurons/controller_module.nestml"
 nestml_target_path = "../nestml-neurons/nestml_target/"
@@ -15,7 +14,6 @@ NESTCodeGeneratorUtils.generate_code_for(
 )
 
 import nest
-from pathlib import Path
 
 # --- 1. Setup ---
 nest.ResetKernel()
