@@ -783,9 +783,19 @@ def collect_scan_results(results_dir, output_csv="scan_summary.csv"):
     import csv, json
     import numpy as np
 
+    def flatten_dict(d, parent_key='', sep='.'):
+        """Flattens a nested dictionary."""
+        items = []
+        for k, v in d.items():
+            new_key = parent_key + sep + k if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
+
     rows = []
     param_keys = set()
-    # First pass: collect all rows and scan for parameter keys (those with >1 unique value)
     temp_rows = []
     for folder in os.listdir(results_dir):
         config_path = os.path.join(results_dir, folder, "config.json")
@@ -794,40 +804,35 @@ def collect_scan_results(results_dir, output_csv="scan_summary.csv"):
             with open(config_path) as f:
                 config = json.load(f)
             loss = np.load(results_path)["loss"]
-            # Take the mean of the last 10 loss values (or fewer if not enough)
             if len(loss) > 0:
                 n_last = min(10, len(loss))
                 final_loss = float(np.mean(loss[-n_last:]))
             else:
                 final_loss = None
-            # Flatten top-level config keys and model_run_settings
-            row = {**config.get("model_run_settings", {})}
-            # Add all top-level keys except large dicts
-            for k, v in config.items():
-                if isinstance(v, (str, int, float, bool)) and k not in row:
-                    row[k] = v
-            # Add neurons and rbf keys if they are simple types
-            for group in ["neurons", "rbf"]:
-                for k, v in config.get(group, {}).items():
-                    if isinstance(v, (str, int, float, bool)) and k not in row:
-                        row[k] = v
+
+            # Flatten the entire config dictionary and create a row
+            row = flatten_dict(config)
             row["folder"] = folder
             row["final_loss"] = final_loss
             temp_rows.append(row)
-    # Find keys with >1 unique value (scanned params)
+
     if temp_rows:
         all_keys = set().union(*(r.keys() for r in temp_rows))
         for k in all_keys:
             values = [r.get(k, None) for r in temp_rows]
-            # Keep keys with >1 unique value or if only one value but not None (for single param scans)
+            
+            hashable_values = [
+                tuple(v) if isinstance(v, list) else v for v in values
+            ]
+            
             if (
-                len(set(values)) > 1
-                or (len(set(values)) == 1 and list(set(values))[0] is not None)
+                len(set(hashable_values)) > 1
+                or (len(set(hashable_values)) == 1 and list(set(hashable_values))[0] is not None)
             ) and k not in ["folder", "final_loss"]:
                 param_keys.add(k)
-    # Always include these columns
+    
     main_cols = sorted(param_keys) + ["folder", "final_loss"]
-    # Second pass: write only main columns
+    
     with open(os.path.join(results_dir, output_csv), "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=main_cols)
         writer.writeheader()
