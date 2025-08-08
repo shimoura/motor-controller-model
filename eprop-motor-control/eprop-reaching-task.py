@@ -698,7 +698,7 @@ def run_simulation(
     for sender in set(senders):
         idc = senders == sender
         error = (readout_signal[idc] - target_signal[idc]) ** 2
-        loss_list.append(0.5 * np.add.reduceat(error, np.arange(0, int(duration["task"]), int(duration["sequence"]))))
+        loss_list.append(0.5 * np.add.reduceat(error, np.arange(0, int(duration["task"]), int(duration["total_sequence_with_silence"]))))
 
     loss = np.sum(loss_list, axis=0)
 
