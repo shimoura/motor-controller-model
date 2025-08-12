@@ -27,7 +27,7 @@ This script includes two methods for encoding the input trajectory:
 2.  **Manual RBF**: A manual implementation where RBF activation is calculated in NumPy
     and fed to Poisson generators. This can be enabled with the `--use-manual-rbf` flag.
 
-Author: Renan Oliveira Shimoura    
+Author: Renan Oliveira Shimoura
 
 References
 ~~~~~~~~~~
@@ -171,8 +171,14 @@ def run_simulation(
 
     trajectory_ids_to_use = task_cfg["trajectory_ids_to_use"]
     n_samples_per_trajectory_to_use = int(task_cfg["n_samples_per_trajectory_to_use"])
-    n_samples = len(trajectory_ids_to_use) * n_samples_per_trajectory_to_use
     n_iter = int(task_cfg["n_iter"])
+    # Determine number of samples (trajectories) actually used.
+    if trajectory_files is not None and len(trajectory_files) > 0:
+        n_samples = len(trajectory_files)
+        duration["n_trajectories"] = n_samples  # Each file considered unique trajectory
+    else:
+        n_samples = len(trajectory_ids_to_use) * n_samples_per_trajectory_to_use
+        duration["n_trajectories"] = len(trajectory_ids_to_use)
     duration["task"] = n_timesteps_per_sequence * n_samples * n_iter * step_ms
     duration["sim"] = duration["task"] + duration["extension_sim"]
 
@@ -464,7 +470,6 @@ def run_simulation(
     # ~~~~~~~~~~~~~~~~~~~~~~~
     # Load the trajectory and target spike data, then resample and process it.
     if trajectory_files is not None and len(trajectory_files) > 0:
-        n_samples = len(trajectory_files)
         sample_ids = list(range(n_samples))
         training_dataset = None
         dataset_path = None
@@ -531,12 +536,12 @@ def run_simulation(
                 np.convolve(target_hist, np.ones(20) / 10, mode="same")
             )
 
-    # Add silent period to each individual target histogram in desired_targets_list
+    # Add silent period BEFORE EACH trajectory (target signals)
     if silent_period > 0:  # Only add if silent duration is positive
         silent_steps = int(silent_period / duration["step"])
         for k in desired_targets_list:
             for i in range(len(desired_targets_list[k])):
-                # Prepend zeros to each target sequence
+                # Prepend zeros to each target sequence so every trajectory starts with silence
                 desired_targets_list[k][i] = np.concatenate(
                     (np.zeros(silent_steps), desired_targets_list[k][i])
                 )
@@ -558,27 +563,26 @@ def run_simulation(
         # Define the number of centers and create RBF inputs
         centers = np.linspace(0.0, np.pi, num_centers)
         rbf_inputs_list = []
+        silent_steps = int(silent_period / duration["step"]) if silent_period > 0 else 0
+        zeros_block = (
+            np.zeros((silent_steps, num_centers)) if silent_steps > 0 else None
+        )
         for trajectory_sample in trajectories:
             rbf_inputs_for_sample = np.zeros((n_timesteps_per_stimulus, num_centers))
             for i, center in enumerate(centers):
                 rbf_inputs_for_sample[:, i] = gaussian_rbf(
                     trajectory_sample, center, width
                 )
+            # Prepend silence for EACH trajectory (not only once at start)
+            if silent_steps > 0:
+                rbf_inputs_for_sample = np.vstack((zeros_block, rbf_inputs_for_sample))
             rbf_inputs_list.append(rbf_inputs_for_sample)
 
-        # Stack the RBF inputs from all samples and scale them to get firing rates.
+        # Stack the per-trajectory (silence + active) blocks and scale to firing rates.
         rate_based_rbf_inputs = (
-            np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"] + shift_min_rate
+            np.vstack(rbf_inputs_list) * rbf_cfg["scale_rate"] / duration["step"]
+            + shift_min_rate
         )
-
-        # Prepend zeros for the silent period to the rate signals
-        if silent_period > 0:
-            silent_steps = int(silent_period / duration["step"])
-            zeros = np.zeros((silent_steps, num_centers))
-            rate_based_rbf_inputs = np.vstack([
-                zeros,
-                rate_based_rbf_inputs
-            ])
 
         # Tile the signals for all training iterations.
         tiled_rbf_inputs = np.tile(rate_based_rbf_inputs, (n_iter, 1))
@@ -593,14 +597,20 @@ def run_simulation(
         ]
         nest.SetStatus(gen_poisson_in, params_gen_poisson_in)
     else:  # rb_neuron input creation
-        input_spk_rate = np.concatenate(trajectories) * rbf_cfg["scale_rate"] + shift_min_rate
-        # Prepend zeros for the silent period to the rate signal
+        # Insert silence BEFORE EACH trajectory so that update intervals align with sequences
         if silent_period > 0:
             silent_steps = int(silent_period / duration["step"])
-            input_spk_rate = np.concatenate([
-                np.zeros(silent_steps),
-                input_spk_rate
-            ])
+            zeros_block = np.zeros(silent_steps)
+            trajectories_with_silence = [
+                np.concatenate((zeros_block, tr)) for tr in trajectories
+            ]
+        else:
+            trajectories_with_silence = trajectories
+
+        input_spk_rate = (
+            np.concatenate(trajectories_with_silence) * rbf_cfg["scale_rate"]
+            + shift_min_rate
+        )
 
         input_spk_rate = np.tile(input_spk_rate, n_iter)
         in_rate_times = (
@@ -651,7 +661,7 @@ def run_simulation(
         )
         conns["source"] = conns["source"] - np.min(conns["source"])
         conns["target"] = conns["target"] - np.min(conns["target"])
-        
+
         conns["len_source"] = len(pop_pre)
         conns["len_target"] = len(pop_post)
 
@@ -666,7 +676,14 @@ def run_simulation(
     # Simulate and Process Results
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # We run the simulation, read out the recorded data, and calculate the training error.
-    print(f"Starting simulation for {duration['sim']:.2f} ms...")
+    # Debug info about expected weight update cadence
+    total_sequences = n_samples * n_iter
+    expected_updates = total_sequences / gradient_batch_size
+    print(
+        f"Starting simulation for {duration['sim']:.2f} ms... (sequences per iter incl. silence: {total_sequences}; "
+        f"update interval: {duration['total_sequence_with_silence']} ms; gradient_batch_size={gradient_batch_size}; "
+        f"expected weight updates ≈ {expected_updates})"
+    )
     nest.Simulate(duration["sim"])
     print("Simulation finished.")
 
@@ -698,7 +715,17 @@ def run_simulation(
     for sender in set(senders):
         idc = senders == sender
         error = (readout_signal[idc] - target_signal[idc]) ** 2
-        loss_list.append(0.5 * np.add.reduceat(error, np.arange(0, int(duration["task"]), int(duration["total_sequence_with_silence"]))))
+        loss_list.append(
+            0.5
+            * np.add.reduceat(
+                error,
+                np.arange(
+                    0,
+                    int(duration["task"]),
+                    int(duration["total_sequence_with_silence"]),
+                ),
+            )
+        )
 
     loss = np.sum(loss_list, axis=0)
 
@@ -783,7 +810,7 @@ def collect_scan_results(results_dir, output_csv="scan_summary.csv"):
     import csv, json
     import numpy as np
 
-    def flatten_dict(d, parent_key='', sep='.'):
+    def flatten_dict(d, parent_key="", sep="."):
         """Flattens a nested dictionary."""
         items = []
         for k, v in d.items():
@@ -820,19 +847,20 @@ def collect_scan_results(results_dir, output_csv="scan_summary.csv"):
         all_keys = set().union(*(r.keys() for r in temp_rows))
         for k in all_keys:
             values = [r.get(k, None) for r in temp_rows]
-            
-            hashable_values = [
-                tuple(v) if isinstance(v, list) else v for v in values
-            ]
-            
+
+            hashable_values = [tuple(v) if isinstance(v, list) else v for v in values]
+
             if (
                 len(set(hashable_values)) > 1
-                or (len(set(hashable_values)) == 1 and list(set(hashable_values))[0] is not None)
+                or (
+                    len(set(hashable_values)) == 1
+                    and list(set(hashable_values))[0] is not None
+                )
             ) and k not in ["folder", "final_loss"]:
                 param_keys.add(k)
-    
+
     main_cols = sorted(param_keys) + ["folder", "final_loss"]
-    
+
     with open(os.path.join(results_dir, output_csv), "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=main_cols)
         writer.writeheader()
@@ -974,13 +1002,23 @@ if __name__ == "__main__":
                 scenario_kwargs["learning_rate_inh"] = scenario_kwargs["learning_rate"]
             # If only one of exc/inh is present, set only that one
             if "learning_rate_exc" in scenario_kwargs:
-                scenario_kwargs["learning_rate_exc"] = scenario_kwargs["learning_rate_exc"]
+                scenario_kwargs["learning_rate_exc"] = scenario_kwargs[
+                    "learning_rate_exc"
+                ]
             if "learning_rate_inh" in scenario_kwargs:
-                scenario_kwargs["learning_rate_inh"] = scenario_kwargs["learning_rate_inh"]
+                scenario_kwargs["learning_rate_inh"] = scenario_kwargs[
+                    "learning_rate_inh"
+                ]
             # If not present in scan, use base_kwargs
-            if "learning_rate_exc" not in scenario_kwargs and base_kwargs.get("learning_rate_exc") is not None:
+            if (
+                "learning_rate_exc" not in scenario_kwargs
+                and base_kwargs.get("learning_rate_exc") is not None
+            ):
                 scenario_kwargs["learning_rate_exc"] = base_kwargs["learning_rate_exc"]
-            if "learning_rate_inh" not in scenario_kwargs and base_kwargs.get("learning_rate_inh") is not None:
+            if (
+                "learning_rate_inh" not in scenario_kwargs
+                and base_kwargs.get("learning_rate_inh") is not None
+            ):
                 scenario_kwargs["learning_rate_inh"] = base_kwargs["learning_rate_inh"]
 
             folder_name = "_".join(

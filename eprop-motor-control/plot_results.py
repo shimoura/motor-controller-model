@@ -175,11 +175,14 @@ def plot_spikes_and_dynamics(
         ax.set_ylabel(ylabel)
         ax.grid(True, linestyle="--", alpha=0.3)
 
-    # Define the two time windows: pre- and post-training
-    xlims_list = [
-        (0, duration["total_sequence_with_silence"]),
-        (duration["task"] - duration["total_sequence_with_silence"], duration["task"]),
-    ]
+    # Define pre/post windows dynamically:
+    n_trajectories = duration["n_trajectories"]
+    pre_train_window = (0, n_trajectories * duration["total_sequence_with_silence"])
+    post_train_window = (
+        duration["task"] - n_trajectories * duration["total_sequence_with_silence"],
+        duration["task"],
+    )
+    xlims_list = [pre_train_window, post_train_window]
     fig, axs = plt.subplots(8, 2, sharex="col", figsize=(6, 12), dpi=300)
 
     # Color cycles for better distinction
