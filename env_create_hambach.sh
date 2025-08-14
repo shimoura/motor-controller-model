@@ -5,7 +5,7 @@
 
 module load stable/25.07 ias6 gcc
 
-# Create and activate the Python venv (eg. inside the multi-area-attention repo)
+# Create and activate the Python venv
 python -m venv --system-site-packages venv
 source "$(git rev-parse --show-toplevel)/venv/bin/activate"
 
