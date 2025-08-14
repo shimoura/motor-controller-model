@@ -3,3 +3,8 @@ eprop-motor-control/sim_results/*
 dataset_motor_training/__pycache__/*
 nestml-neurons/nestml_target/*
 nestml-neurons/report/*
+nestml-neurons/nestml_install/*
+testing-nestml-neurons/target/*
+testing-nestml-neurons/__pycache__/*
+venv/*
+eprop-motor-control/report/*

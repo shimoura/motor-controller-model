@@ -69,10 +69,9 @@ def plot_all_loss_curves(
 
     plt.figure(figsize=(12, 8))
     for label, _, loss in metrics:
-        # Plot all but the last point to avoid the artifact
         if len(loss) > 1:
             x_values = np.arange(1, len(loss))
-            plt.plot(x_values, loss[:-1], label=label)
+            plt.plot(x_values, loss, label=label)
 
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
@@ -103,7 +102,7 @@ def plot_training_error(loss, out_path, x=None, xlabel="training iteration"):
         x = x[:minlen]
         loss = loss[:minlen]
     fig, ax = plt.subplots(figsize=(4, 3))  # Changed figure size here
-    ax.plot(x[:-1], loss[:-1])
+    ax.plot(x, loss)
     ax.set_ylabel(r"$E = \frac{1}{2} \sum_{t,k} (y_k^t -y_k^{*,t})^2$")
     ax.set_xlabel(xlabel)
 
@@ -176,11 +175,14 @@ def plot_spikes_and_dynamics(
         ax.set_ylabel(ylabel)
         ax.grid(True, linestyle="--", alpha=0.3)
 
-    # Define the two time windows: pre- and post-training
-    xlims_list = [
-        (0, duration["sequence"]),
-        (duration["task"] - duration["sequence"], duration["task"]),
-    ]
+    # Define pre/post windows dynamically:
+    n_trajectories = duration["n_trajectories"]
+    pre_train_window = (0, n_trajectories * duration["total_sequence_with_silence"])
+    post_train_window = (
+        duration["task"] - n_trajectories * duration["total_sequence_with_silence"],
+        duration["task"],
+    )
+    xlims_list = [pre_train_window, post_train_window]
     fig, axs = plt.subplots(8, 2, sharex="col", figsize=(6, 12), dpi=300)
 
     # Color cycles for better distinction
@@ -325,7 +327,7 @@ def plot_weight_time_courses(
     Plot the time course of selected synaptic weights during training.
     Args:
         events_wr: Weight recorder events
-        weights_pre_train: Initial weights
+        weights_pre_train: Dict with keys 'source', 'target', 'weight'
         nrns_rec: List of recurrent neuron IDs
         nrns_out: List of output neuron IDs
         n_record_w: Number of recorded weights
@@ -341,14 +343,19 @@ def plot_weight_time_courses(
                 idc_syn_pre = (weights_pre_train[label]["source"] == sender) & (
                     weights_pre_train[label]["target"] == target
                 )
+                # If the weight exists in pre_train, plot it
+                indices = np.where(idc_syn_pre)[0]
+                if indices.size > 0:
+                    initial_weight = weights_pre_train[label]["weight"][indices[0]]
+                else:
+                    initial_weight = np.nan
                 times = [0.0] + events["times"][idc_syn].tolist()
-                weights = [weights_pre_train[label]["weight"][idc_syn_pre]] + events[
-                    "weights"
-                ][idc_syn].tolist()
-                ax.step(times, weights, c=colors["blue"])
+                weights = [initial_weight] + events["weights"][idc_syn].tolist()
+                ax.step(times, weights, c=colors.get("blue", "#1f77b4"))
         ax.set_ylabel(ylabel)
 
     fig, axs = plt.subplots(2, 1, sharex=True, figsize=(6, 6))
+    # rec_rec weights: sender and target both in nrns_rec
     plot_weight_time_course(
         axs[0],
         events_wr,
@@ -357,6 +364,7 @@ def plot_weight_time_courses(
         "rec_rec",
         r"$W_\text{rec}$ (pA)",
     )
+    # rec_out weights: sender in nrns_rec, target in nrns_out
     plot_weight_time_course(
         axs[1],
         events_wr,
@@ -376,15 +384,35 @@ def plot_weight_time_courses(
 def plot_weight_matrices(weights_pre_train, weights_post_train, colors, out_path):
     """
     Plot the initial and final weight matrices for recurrent and output connections.
-    Args:
-        weights_pre_train: Initial weights
-        weights_post_train: Final weights
-        colors: Color dictionary
-        out_path: Path to save the figure
+    This function efficiently reconstructs dense weight matrices from sparse connection data
+    provided by `get_weights` and maintains the original 2x2 plot layout and all other
+    plot configurations, including the colorbar's appearance and position.
     """
+
+    def reconstruct_weight_matrix(conns_data):
+        if not conns_data or not conns_data["source"].size:
+            if "len_target" in conns_data and "len_source" in conns_data:
+                 return np.zeros((conns_data["len_target"], conns_data["len_source"]))
+            return np.array([[]])
+
+        num_post = conns_data["len_target"]
+        num_pre = conns_data["len_source"]
+
+        if num_post == 0 or num_pre == 0:
+            return np.array([[]])
+
+        weight_matrix = np.zeros((num_post, num_pre))
+
+        target_indices = conns_data["target"].astype(int)
+        source_indices = conns_data["source"].astype(int)
+        
+        weight_matrix[target_indices, source_indices] = conns_data["weight"]
+        return weight_matrix
+
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         "cmap", ((0.0, colors["red"]), (0.5, colors["white"]), (1.0, colors["blue"]))
     )
+
     fig, axs = plt.subplots(2, 2, sharex="col", sharey="row", figsize=(10, 8))
     all_w_extrema = []
     for k in weights_pre_train.keys():
@@ -397,7 +425,14 @@ def plot_weight_matrices(weights_pre_train, weights_post_train, colors, out_path
     vmax = np.max(all_w_extrema)
     norm = mpl.colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
     args = {"cmap": cmap, "norm": norm}
+
     for i, weights in zip([0, 1], [weights_pre_train, weights_post_train]):
+        weights["rec_rec"]["weight_matrix"] = reconstruct_weight_matrix(
+            weights["rec_rec"]
+        )
+        weights["rec_out"]["weight_matrix"] = reconstruct_weight_matrix(
+            weights["rec_out"]
+        )
         axs[0, i].pcolormesh(weights["rec_rec"]["weight_matrix"], **args)
         cmesh = axs[1, i].pcolormesh(weights["rec_out"]["weight_matrix"], **args)
         axs[1, i].set_xlabel("recurrent\nneurons")
@@ -409,9 +444,9 @@ def plot_weight_matrices(weights_pre_train, weights_post_train, colors, out_path
         0.5, 1.1, "post-training", transform=axs[0, 1].transAxes, ha="center"
     )
     axs[1, 0].yaxis.get_major_locator().set_params(integer=True)
-    cbar = plt.colorbar(
-        cmesh, cax=axs[1, 1].inset_axes([1.1, 0.2, 0.05, 0.8]), label="weight (pA)"
-    )
-    fig.tight_layout()
+    fig.subplots_adjust(right=0.88)
+    cbar_ax = fig.add_axes([0.90, 0.20, 0.02, 0.6])
+    cbar = plt.colorbar(cmesh, cax=cbar_ax, label="weight (pA)")
+    fig.tight_layout(rect=[0, 0, 0.88, 1])
     fig.savefig(out_path, dpi=300)
     plt.close(fig)
