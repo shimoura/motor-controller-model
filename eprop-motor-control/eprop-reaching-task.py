@@ -297,7 +297,7 @@ def run_simulation(
     gradient_batch_size = int(task_cfg["gradient_batch_size"])
     w_input, w_rec, g = syn_cfg["w_input"], syn_cfg["w_rec"], syn_cfg["g"]
 
-    # Define synapse models and parameters
+    # Define connection rule parameters
     params_conn_all_to_all = {"rule": "all_to_all", "allow_autapses": False}
     params_conn_one_to_one = {"rule": "one_to_one"}
     params_conn_bernoulli = {
@@ -305,6 +305,8 @@ def run_simulation(
         "p": syn_cfg["conn_bernoulli_p"],
         "allow_autapses": False,
     }
+
+    # Create custom e-prop synapse models for excitatory and inhibitory connections
     params_syn_eprop_exc = {
         "optimizer": {**syn_cfg["exc"]["optimizer"], "batch_size": gradient_batch_size},
         "average_gradient": syn_cfg["average_gradient"],
@@ -316,41 +318,6 @@ def run_simulation(
         "average_gradient": syn_cfg["average_gradient"],
         "weight_recorder": weight_recorder,
     }
-    params_syn_base = {
-        "synapse_model": "eprop_synapse_bsshslm_2020",
-        "delay": duration["step"],
-        "tau_m_readout": params_nrn_out["tau_m"],
-    }
-    params_syn_rec_exc = {
-        **copy.deepcopy(params_syn_base),
-        "weight": nest.math.redraw(
-            nest.random.normal(mean=w_rec, std=w_rec * 0.1), min=0.0, max=1000.0
-        ),
-        "synapse_model": "eprop_synapse_bsshslm_2020_exc",
-    }
-    params_syn_rec_inh = {
-        **copy.deepcopy(params_syn_base),
-        "weight": nest.math.redraw(
-            nest.random.normal(mean=-w_rec * g, std=g * w_rec * 0.1),
-            min=-1000.0,
-            max=0.0,
-        ),
-        "synapse_model": "eprop_synapse_bsshslm_2020_inh",
-    }
-    params_syn_feedback = {
-        "synapse_model": "eprop_learning_signal_connection_bsshslm_2020",
-        "delay": duration["step"],
-        "weight": nest.math.redraw(
-            nest.random.normal(mean=w_rec, std=w_rec * 0.1), min=0.0, max=1000.0
-        ),
-    }
-    params_syn_rate_target = {
-        "synapse_model": "rate_connection_delayed",
-        "delay": duration["step"],
-        "receptor_type": syn_cfg["receptor_type"],
-    }
-    params_syn_static = {"synapse_model": "static_synapse", "delay": duration["step"]}
-
     # Copy base models to create specific plastic synapse types
     nest.CopyModel(
         "eprop_synapse_bsshslm_2020",
@@ -363,6 +330,42 @@ def run_simulation(
         params_syn_eprop_inh,
     )
 
+    # Create synapse parameters for recurrent connections
+    params_syn_rec_exc = {
+        "synapse_model": "eprop_synapse_bsshslm_2020_exc",
+        "delay": duration["step"],
+        "tau_m_readout": params_nrn_out["tau_m"],
+        "weight": nest.math.redraw(
+            nest.random.normal(mean=w_rec, std=w_rec * 0.1), min=0.0, max=1000.0
+        ),
+    }
+    params_syn_rec_inh = {
+        "synapse_model": "eprop_synapse_bsshslm_2020_inh",
+        "delay": duration["step"],
+        "tau_m_readout": params_nrn_out["tau_m"],
+        "weight": nest.math.redraw(
+            nest.random.normal(mean=-w_rec * g, std=g * w_rec * 0.1),
+            min=-1000.0,
+            max=0.0,
+        ),
+    }
+
+    # Create synapse parameters for feedback connections
+    params_syn_feedback = {
+        "synapse_model": "eprop_learning_signal_connection_bsshslm_2020",
+        "delay": duration["step"],
+        "weight": nest.math.redraw(
+            nest.random.normal(mean=w_rec, std=w_rec * 0.1), min=0.0, max=1000.0
+        ),
+    }
+    # Create synapse parameters for rate-based target connections
+    params_syn_rate_target = {
+        "synapse_model": "rate_connection_delayed",
+        "delay": duration["step"],
+        "receptor_type": syn_cfg["receptor_type"],
+    }
+    params_syn_static = {"synapse_model": "static_synapse", "delay": duration["step"]}
+
     # Connect input layer to recurrent layer
     if use_manual_rbf:
         params_syn_input = {
@@ -373,6 +376,7 @@ def run_simulation(
             ),
         }
         if plastic_input_to_rec:
+            params_syn_input["synapse_model"] = "eprop_synapse_bsshslm_2020_exc"
             # Connect Poisson generators to parrot neurons for plastic connections
             nest.Connect(
                 gen_poisson_in,
@@ -382,7 +386,7 @@ def run_simulation(
             )
             # Connect parrot neurons to recurrent neurons
             nest.Connect(
-                parrot_neurons, nrns_rec, params_conn_all_to_all, params_syn_rec_exc
+                parrot_neurons, nrns_rec, params_conn_all_to_all, params_syn_input
             )
         else:
             for i, poisson_node in enumerate(gen_poisson_in):
@@ -420,7 +424,10 @@ def run_simulation(
             gen_poisson_in, nrns_rb, params_conn_all_to_all, params_syn_input_to_rb
         )
         if plastic_input_to_rec:
-            nest.Connect(nrns_rb, nrns_rec, params_conn_all_to_all, params_syn_rec_exc)
+            params_syn_rb_to_rec["synapse_model"] = "eprop_synapse_bsshslm_2020_exc"
+            nest.Connect(
+                nrns_rb, nrns_rec, params_conn_all_to_all, params_syn_rb_to_rec
+            )
         else:
             for i, input_node in enumerate(nrns_rb):
                 nest.Connect(
