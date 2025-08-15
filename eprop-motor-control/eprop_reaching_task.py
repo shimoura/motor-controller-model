@@ -484,6 +484,7 @@ def run_simulation(
         dataset_path = (
             Path(__file__).resolve().parent.parent
             / "dataset_motor_training"
+            / "sample_data"
             / "dataset_spikes.gdf"
         )
         training_dataset = load_data_file(str(dataset_path))
