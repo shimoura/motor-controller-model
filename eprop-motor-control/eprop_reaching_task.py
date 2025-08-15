@@ -48,7 +48,7 @@ References
 
 import matplotlib
 
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 
 import nest
 import copy
@@ -484,6 +484,7 @@ def run_simulation(
         dataset_path = (
             Path(__file__).resolve().parent.parent
             / "dataset_motor_training"
+            / "sample_data"
             / "dataset_spikes.gdf"
         )
         training_dataset = load_data_file(str(dataset_path))
@@ -811,6 +812,14 @@ def run_simulation(
         with open(os.path.join(out_dir, "config.json"), "w") as f:
             json.dump(config_serializable, f, indent=2)
     print(f"Results saved to {out_dir}")
+
+    return {
+        "spikes": events_sr,                # dict with 'senders' and 'times'
+        "output_multimeter": events_mm_out, # dict with 'senders', 'times', 'readout_signal', 'target_signal'
+        "loss": loss,                       # 1D array
+        "duration": duration,               # dict
+        "nrns_rec": nrns_rec                # array of recurrent neuron IDs
+    }
 
 
 def collect_scan_results(results_dir, output_csv="scan_summary.csv"):

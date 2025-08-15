@@ -2,7 +2,7 @@
 
 from pynestml.frontend.pynestml_frontend import generate_nest_target
 
-nestml_file_path = "../nestml-neurons"
+nestml_file_path = "."
 nestml_target_path = nestml_file_path + "/nestml_target/"
 nestml_install_path = nestml_file_path + "/nestml_install/"
 

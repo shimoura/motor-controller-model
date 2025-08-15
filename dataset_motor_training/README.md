@@ -1,8 +1,19 @@
-This dataset contains 60 entries of initial and target end-effector positions couples and corresponding spikes produced as output by the motor cortex, as a sum of both the feedforward and feedback contributions. The recorded population is made up of a total of 100 neurons, equally split into two subgroups encoding positive and negative quantities, respectively. 
-The dataset features ~10 examples for each of the 6 trajectories, and each line is formatted as follows:
+# dataset_motor_training
 
-[trajectory ID] [senders_pos] [times_pos] [senders_neg] [times_neg]
- 
-where senders contains the IDs of spiking neurons and times the instants at which spikes are generated.
+This folder contains resources and scripts for preparing, analyzing, and visualizing motor training datasets used in neural network modeling and motor control experiments.
 
-Each line refers to a simulation starting with a 150 ms pause and preparation followed by 500 ms of movement execution.
+## Structure
+- **sample_data/**: Contains example datasets, spike trains, trajectories, and a dedicated README for sample data details.
+- **stage1/**: Includes processed spike and trajectory files for specific experimental stages.
+- **load_dataset.py**: Script for loading and preprocessing datasets.
+- **plot_dataset.py**: Script for visualizing dataset contents.
+- **utils.py**: Utility functions for data handling and processing.
+- **Notebooks**: Jupyter notebooks for data checking, encoding, and exploration.
+
+## Usage
+Use the provided scripts and notebooks to:
+- Load and preprocess motor training data
+- Visualize and analyze dataset features
+- Encode trajectories and spike trains for modeling
+
+Refer to the `sample_data/README.md` for details about the example datasets.

@@ -21,20 +21,10 @@ For a high-level overview of the repository, see the main `README.md` in the par
 To compile and install custom neuron models (NESTML):
 
 ```bash
-python testing-nestml-neurons/compile_nestml_neurons.py
+python ../nestml-neurons/compile_nestml_neurons.py
 ```
 
-Or use the provided Jupyter notebooks in `testing-nestml-neurons/` for interactive compilation, installation, and testing of neuron models.
-
-### Analysis of Parameter Scans
-
-To analyze results from parameter sweeps and generate heatmaps:
-
-```bash
-python analyse_scan_results.py
-```
-
-You can run the main experiment script with various options for parameter sweeps and custom configurations.
+Or use the provided Jupyter notebooks in `nestml-neurons/` for interactive compilation, installation, and testing of neuron models.
 
 ### Basic Usage
 
@@ -45,6 +35,16 @@ python eprop-reaching-task.py
 ```
 
 This will use parameters from `config/config.yaml` and save all results into a new subfolder under `sim_results/`.
+
+### Analysis of Parameter Scans
+
+To analyze results from parameter sweeps and generate heatmaps:
+
+```bash
+python analyse_scan_results.py
+```
+
+You can run the main experiment script with various options for parameter sweeps and custom configurations.
 
 ### Trained Weights Analysis
 

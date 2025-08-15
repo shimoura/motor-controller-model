@@ -450,3 +450,238 @@ def plot_weight_matrices(weights_pre_train, weights_post_train, colors, out_path
     fig.tight_layout(rect=[0, 0, 0.88, 1])
     fig.savefig(out_path, dpi=300)
     plt.close(fig)
+
+
+def tutorial_plot_trajectories_and_targets(trajectory_files, target_files, params, save_path=None):
+    """
+    Plot joint angle trajectories and corresponding target spike signals for tutorial visualization.
+
+    This function is specific to the motor-controller SNN tutorial.
+    It displays the input trajectories and expected output spike rates ("pos" and "neg" channels) used by the model.
+
+    Parameters
+    ----------
+    trajectory_files : list of str
+        List of file paths to joint angle trajectory data.
+    target_files : list of str
+        List of file paths to target spike raster data.
+    params : dict
+        Dictionary of simulation/encoding parameters (may be used for plot annotation).
+    save_path : str, optional
+        If provided, saves the figure to this path.
+
+    Returns
+    -------
+    None
+        Shows the plot and saves it if save_path is specified.
+
+    Example
+    -------
+    >>> tutorial_plot_trajectories_and_targets(trajectory_files, target_files, params)
+    """
+
+    n_trials = len(trajectory_files)
+    duration_ms = 650
+    num_bins = 650
+
+    fig, axs = plt.subplots(2, n_trials, figsize=(5*n_trials, 6), sharex='col', 
+                           gridspec_kw={'height_ratios': [1, 1]})
+
+    all_trajectories = [np.loadtxt(traj_path) for traj_path in trajectory_files]
+    global_min = min(traj.min() for traj in all_trajectories)
+    global_max = max(traj.max() for traj in all_trajectories)
+
+    for i in range(n_trials):
+        trajectory = all_trajectories[i]
+        time_traj = np.linspace(0, duration_ms, len(trajectory))
+        axs[0, i].plot(time_traj, trajectory, color='tab:blue')
+        axs[0, i].set_title(f"Trajectory {i+1}")
+        axs[0, i].set_ylim(global_min, global_max)
+        axs[0, i].grid(True, linestyle='--', alpha=0.3)
+        axs[0, i].set_xlabel("Time (ms)")
+        if i == 0:
+            axs[0, i].set_ylabel("Joint Angle (rad)")
+        else:
+            axs[0, i].set_yticklabels([])
+
+        tgt_path = target_files[i]
+        with open(tgt_path, "r") as f:
+            first_line = f.readline()
+        delimiter = "," if "," in first_line else None
+        target_spikes = np.loadtxt(tgt_path, delimiter=delimiter)
+        if target_spikes.ndim == 1:
+            target_spikes = target_spikes.reshape((1, -1))
+        pos_spikes = target_spikes[target_spikes[:,0] <= 50, 1]
+        neg_spikes = target_spikes[target_spikes[:,0] > 50, 1]
+        pos_hist, bin_edges = np.histogram(pos_spikes, bins=num_bins, range=(0, duration_ms))
+        neg_hist, _ = np.histogram(neg_spikes, bins=num_bins, range=(0, duration_ms))
+        axs[1, i].plot(bin_edges[:-1], pos_hist, color='tab:blue', label='pos')
+        axs[1, i].plot(bin_edges[:-1], neg_hist, color='tab:red', label='neg')
+        axs[1, i].set_title(f"Target Signal {i+1}")
+        axs[1, i].set_xlabel("Time (ms)")
+        if i == 0:
+            axs[1, i].set_ylabel("Target Spike Rate")
+        else:
+            axs[1, i].set_yticklabels([])
+        axs[1, i].grid(True, linestyle='--', alpha=0.3)
+        axs[1, i].legend()
+
+    plt.suptitle("Input Trajectories and Corresponding Target Spike Signals (pos/neg)", fontsize=16)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    if save_path:
+        fig.savefig(save_path)
+    plt.show()
+
+
+def tutorial_plot_spike_raster(spikes, nrns_rec, xlims_list, save_path=None):
+    """
+    Plot spike raster for recurrent neuron activity before and after training in tutorial.
+
+    This function is tailored for the SNN motor-controller tutorial, comparing population activity pre- and post-learning.
+
+    Parameters
+    ----------
+    spikes : dict
+        Dictionary containing spike 'senders' (neuron IDs) and 'times' (ms).
+    nrns_rec : array-like
+        List or array of recurrent neuron IDs (NEST GIDs).
+    xlims_list : list of tuple
+        List with two (start, stop) tuples, for pre- and post-training time windows.
+    save_path : str, optional
+        If provided, saves the figure to this path.
+
+    Returns
+    -------
+    None
+        Shows the plot and saves it if save_path is specified.
+
+    Example
+    -------
+    >>> tutorial_plot_spike_raster(results['spikes'], results['nrns_rec'], xlims_list)
+    """
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    for i, xlims in enumerate(xlims_list):
+        idc_times = (spikes['times'] > xlims[0]) & (spikes['times'] < xlims[1])
+        idc_sender = np.isin(spikes['senders'][idc_times], nrns_rec)
+        senders_subset = spikes['senders'][idc_times][idc_sender]
+        times_subset = spikes['times'][idc_times][idc_sender]
+        min_gid = nrns_rec[0].global_id
+        max_gid = nrns_rec[-1].global_id
+        margin = abs(max_gid - min_gid) * 0.1 + 1
+        axs[i].scatter(times_subset, senders_subset, s=2, color='black', alpha=0.7)
+        axs[i].set_ylim(min_gid - margin, max_gid + margin)
+        axs[i].set_xlim(xlims)
+        axs[i].set_xlabel('Time (ms)')
+        axs[i].set_title('Pre-training window' if i == 0 else 'Post-training window')
+    axs[0].set_ylabel('Neuron ID')
+    for ax in axs:
+        ax.grid(True, linestyle='--', alpha=0.3)
+    plt.suptitle('Spike Raster Plot: Pre- and Post-Training')
+    plt.tight_layout()
+    if save_path:
+        fig.savefig(save_path)
+    plt.show()
+
+
+def tutorial_plot_output_vs_target(output_mm, xlims_list, save_path=None):
+    """
+    Plot network output and error versus the target signal for motor command channels ("pos"/"neg") in tutorial.
+
+    This figure is specific to the motor-controller SNN tutorial, used to assess learning progress and output accuracy.
+
+    Parameters
+    ----------
+    output_mm : dict
+        Dictionary with keys 'senders', 'readout_signal', 'target_signal', 'times'.
+    xlims_list : list of tuple
+        List with two (start, stop) tuples for pre- and post-training windows.
+    save_path : str, optional
+        If provided, saves the figure to this path.
+
+    Returns
+    -------
+    None
+        Shows the plot and saves if save_path is specified.
+
+    Example
+    -------
+    >>> tutorial_plot_output_vs_target(results['output_multimeter'], xlims_list)
+    """
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    senders = output_mm['senders']
+    readout = output_mm['readout_signal']
+    target = output_mm['target_signal']
+    times = output_mm['times']
+
+    unique_gids = np.unique(senders)
+    labels = {gid: 'pos' if i == 0 else 'neg' for i, gid in enumerate(unique_gids)}
+    colors = {gid: 'tab:blue' if i == 0 else 'tab:red' for i, gid in enumerate(unique_gids)}
+
+    fig, axs = plt.subplots(2, 2, figsize=(14, 8), sharex='col', gridspec_kw={'height_ratios': [2, 1]})
+
+    for col, xlims in enumerate(xlims_list):
+        for gid in unique_gids:
+            mask = ((senders == gid) & (times > xlims[0]) & (times < xlims[1]))
+            label = labels[gid]
+            color = colors[gid]
+            axs[0, col].plot(times[mask], readout[mask], color=color, label=f'{label} output')
+            axs[1, col].plot(times[mask], readout[mask] - target[mask], color=color, label=f'{label} error')
+        axs[0, col].set_title('Pre-training window' if col == 0 else 'Post-training window')
+        axs[1, col].axhline(0, color='gray', linestyle='--', alpha=0.5)
+        axs[1, col].set_xlabel('Time (ms)')
+        ax_inset = inset_axes(axs[0, col], width="35%", height="30%", loc='upper left', borderpad=2)
+        for gid in unique_gids:
+            mask = ((senders == gid) & (times > xlims[0]) & (times < xlims[1]))
+            label = labels[gid]
+            color = colors[gid]
+            ax_inset.plot(times[mask], target[mask], color=color, alpha=0.6, linewidth=2, label=f'{label} target')
+        ax_inset.set_xticks([])
+        ax_inset.set_yticks([])
+        ax_inset.set_title("Target", fontsize=10)
+
+    axs[0, 0].set_ylabel('Output')
+    axs[1, 0].set_ylabel('Error')
+    for row in range(2):
+        axs[row, 0].legend(loc='upper right')
+        axs[row, 1].legend(loc='upper right')
+    for ax_row in axs:
+        for ax in ax_row:
+            ax.grid(True, linestyle='--', alpha=0.3)
+    plt.suptitle('Network Output and Error vs Target (shown as inset)', fontsize=18)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+    if save_path:
+        fig.savefig(save_path)
+    plt.show()
+
+
+def tutorial_plot_loss_curve(loss, save_path=None):
+    """
+    Plot training loss curve for the motor-controller SNN tutorial.
+
+    Shows the mean squared error (MSE) loss across training iterations, indicating learning progress.
+
+    Parameters
+    ----------
+    loss : array-like
+        Sequence of loss values per training iteration.
+    save_path : str, optional
+        If provided, saves the figure to this path.
+
+    Returns
+    -------
+    None
+        Shows the plot and saves if save_path is specified.
+
+    Example
+    -------
+    >>> tutorial_plot_loss_curve(results['loss'])
+    """
+    plt.figure(figsize=(8,4))
+    plt.plot(np.arange(1, len(loss)+1), loss)
+    plt.xlabel('Training iteration')
+    plt.ylabel('Loss (MSE)')
+    plt.title('Training Loss Curve')
+    plt.grid(True, linestyle='--', alpha=0.3)
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
